@@ -1,0 +1,131 @@
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  RUSTFLAGS: '-Dwarnings'
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  RUSTUP_MAX_RETRIES: 10
+  RUST_BACKTRACE: short
+
+jobs:
+  check-msrv:
+    name: Check MSRV
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os:
+        - macos-13
+        - ubuntu-22.04
+        - windows-2022
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: "1.80.0"
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: cargo-cache-${{ hashFiles('Cargo.lock', 'Cargo.toml') }}-${{ matrix.os }}
+
+    - name: Install cargo-hack
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cargo-hack
+
+  cargo-deny:
+    name: Run cargo-deny
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+    continue-on-error: ${{ matrix.checks == 'advisories' }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - uses: EmbarkStudios/cargo-deny-action@v2
+      with:
+        command: check ${{ matrix.checks }}
+
+  test:
+    name: Run Checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+        - macos-13
+        - ubuntu-22.04
+        - windows-2022
+        rust:
+        - beta
+        - nightly
+        - stable
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+      with:
+        make-default: true
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: ${{ matrix.rust }}
+        components: clippy, rustfmt
+
+    - name: Install cargo-nextest
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cargo-nextest
+
+    - name: Install cargo-hack
+      uses: baptiste0928/cargo-install@v3
+      with:
+        crate: cargo-hack
+    
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: cargo-cache-${{ hashFiles('Cargo.lock', 'Cargo.toml') }}-${{ matrix.os }}-${{ matrix.rust }}
+
+    - name: Check formatting
+      shell: bash
+      run: cargo fmt -- --check
+
+    - name: Setup Embark Studios lint rules
+      shell: bash
+      run: |
+        mkdir .cargo
+        curl -sL https://raw.githubusercontent.com/EmbarkStudios/rust-ecosystem/main/lints.toml > .cargo/config.toml
+
+    - name: Clippy
+      shell: bash
+      run: cargo clippy
+
+    - name: Test compilation
+      run: cargo hack check --each-feature
+
+    - name: Run tests
+      shell: bash
+      run: cargo nextest run --all-features

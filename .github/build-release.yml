@@ -1,0 +1,28 @@
+name: Build Release Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Release ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - target: x86_64-unknown-linux-musl
+          archive: tar.gz tar.xz
+    steps:
+    - uses: actions/checkout@master
+    - name: Build and release
+      uses: rust-build/rust-build.action@v1.4.5
+      with:
+        TOOLCHAIN_VERSION: stable
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RUSTTARGET: ${{ matrix.target }}
+        EXTRA_FILES: "config.sample.toml"
+        ARCHIVE_TYPES: ${{ matrix.archive }}
