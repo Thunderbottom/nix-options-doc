@@ -1,5 +1,5 @@
 {
-  description = "Generate Markdown documentation for NixOS module options";
+  description = "Generate multi-format documentation for Nix module options";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
@@ -10,15 +10,17 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = {
-    nixpkgs,
-    rust-overlay,
-    flake-utils,
-    ...
-  }:
+  outputs =
+    {
+      nixpkgs,
+      rust-overlay,
+      flake-utils,
+      ...
+    }:
     flake-utils.lib.eachDefaultSystem (
-      system: let
-        overlays = [(import rust-overlay)];
+      system:
+      let
+        overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
@@ -28,7 +30,8 @@
         buildInputs = with pkgs; [
           openssl
         ];
-      in {
+      in
+      {
         devShells.default = pkgs.mkShell {
           inherit buildInputs nativeBuildInputs;
 
@@ -41,9 +44,10 @@
           RUST_SRC_PATH = pkgs.rust.packages.stable.rustPlatform.rustLibSrc;
         };
 
-        packages.default = let
-          manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
-        in
+        packages.default =
+          let
+            manifest = (pkgs.lib.importTOML ./Cargo.toml).package;
+          in
           pkgs.rustPlatform.buildRustPackage {
             pname = manifest.name;
             version = manifest.version;
