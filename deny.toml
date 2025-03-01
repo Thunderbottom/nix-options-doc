@@ -53,7 +53,7 @@ allow = [
 ]
 exceptions = [
     # Use exceptions for these as they only have a single user
-    { allow = ["Zlib"], crate = "tinyvec" },
+    { allow = ["Zlib"], crate = "foldhash" },
     { allow = ["OpenSSL"], crate = "ring" },
 ]
 
