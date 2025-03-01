@@ -1,17 +1,20 @@
 <h1 align="center">nix-options-doc</h1>
 
-A command-line tool that generates documentation for NixOS module options by parsing Nix files and producing formatted Markdown table.
+A command-line tool that generates multi-format documentation for NixOS module options by parsing Nix files.
 
 A live preview of the generated documentation can be found at: [Thunderbottom/flakes](https://github.com/Thunderbottom/flakes/blob/main/options.md)
 
 ## Features
 
-- Generates comprehensive Markdown documentation for NixOS module options
-- Recursively scans directories for `.nix` files
-- Supports both local paths and remote Git repositories
-- Extracts option names, types, default values, and descriptions
+- Recursively scans directories for `.nix` files (with directory exclusion support)
+- Supports both local paths and remote Git repositories (with branch/tag selection)
+- Extracts option names, types, default values, descriptions, and line numbers
+- Handles variable interpolation (e.g., `${namespace}`) with configurable replacements
+- Robust error handling with detailed error messages
+- Multiple output formats (Markdown, JSON, HTML, CSV)
+- Line numbers in file references for direct linking
 - Optional alphabetical sorting of options
-- Links file paths in generated documentation
+- Links file paths in generated documentation for easy reference
 
 ## Installation
 
@@ -53,6 +56,12 @@ $ nix-options-doc --path ./nixos/modules --sort
 
 # Output to stdout instead of file
 $ nix-options-doc --out stdout
+
+# Exclude specific directories
+$ nix-options-doc --exclude-dir templates,tests
+
+# Replace variables like ${namespace} in paths
+$ nix-options-doc --replace namespace=snowflake --replace system=x86_64-linux
 ```
 
 ### Working with Git Repositories
@@ -74,12 +83,26 @@ $ nix-options-doc --path ssh://git@example.com/repo.git
 ### Command Line Options
 
 ```
+Usage: nix-options-doc [OPTIONS]
+
 Options:
-  -p, --path <PATH>  Local path or remote git repository URL to the nix configuration [default: .]
-  -o, --out <OUT>    Path to output file or 'stdout' [default: nix-options.md]
-  -s, --sort         Whether the output names should be sorted
-  -h, --help         Print help
-  -V, --version      Print version
+  -p, --path <PATH>                Local path or remote git repository URL to the nix configuration [default: .]
+  -o, --out <OUT>                  Path to the output file or 'stdout' [default: nix-options.md]
+  -f, --format <FORMAT>            Output format [default: markdown] [possible values: markdown, json, html, csv]
+  -s, --sort                       Whether the output names should be sorted
+  -b, --branch <BRANCH>            Git branch or tag to use (if repository URL provided)
+  -d, --depth <DEPTH>              Git commit depth (set to 1 for shallow clone) [default: 1]
+      --prefix <PREFIX>            Filter options by prefix (e.g. "services.nginx")
+      --replace <REPLACE>          Replace nix variable with the specified value in option paths (can be used multiple times) Format: --replace key=value
+      --search <SEARCH>            Search in option names and descriptions
+      --type-filter <TYPE_FILTER>  Filter options by type (e.g. "bool", "string")
+      --has-default                Only show options that have a default value
+      --has-description            Only show options that have a description
+  -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
+  -P, --progress                   Show progress bar
+  -v, --verbose                    Enable verbose output
+  -h, --help                       Print help
+  -V, --version                    Print version
 ```
 
 ## Output Format
@@ -98,8 +121,8 @@ Example output:
 ```markdown
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| [services.nginx.enable](modules/nginx/default.nix) | boolean | `false` | Whether to enable nginx |
-| [services.nginx.port](modules/nginx/default.nix) | number | `80` | Port to listen on |
+| [services.nginx.enable](modules/nginx/default.nix#L25) | boolean | `false` | Whether to enable nginx |
+| [services.nginx.port](modules/nginx/default.nix#L32) | number | `80` | Port to listen on |
 ```
 
 ## Development
@@ -130,12 +153,16 @@ $ cargo test
 ### Dependencies
 
 - clap: Command-line argument parsing
-- rnix: Nix parser
+- csv: CSV file generation
 - git2: Git repository handling
-- rowan: Syntax tree manipulation
+- html-escape: HTML entity escaping
+- indicatif: Progress bar
+- rnix: Nix parser
+- serde_json: JSON serialization
 - serde: Serialization/deserialization
-- walkdir: Directory traversal
 - tempfile: Temporary directory management
+- thiserror: Error handling
+- walkdir: Directory traversal
 
 ## Contributing
 
