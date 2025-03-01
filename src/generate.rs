@@ -1,9 +1,13 @@
-pub use clap::{Parser, ValueEnum};
-
 use crate::error::NixDocError;
 use crate::OptionDoc;
 
-// Generate a markdown table with all the option values
+/// Generates a Markdown formatted string documenting NixOS module options.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+///
+/// # Returns
+/// A `Result` containing the generated Markdown string or an error.
 pub fn generate_markdown(options: &[OptionDoc]) -> Result<String, Box<dyn std::error::Error>> {
     let mut output = String::from("# NixOS Module Options\n\n");
 
@@ -44,12 +48,24 @@ pub fn generate_markdown(options: &[OptionDoc]) -> Result<String, Box<dyn std::e
     Ok(output)
 }
 
-// Generate JSON for all the option values
+/// Generates a pretty-printed JSON string documenting NixOS module options.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+///
+/// # Returns
+/// A `Result` containing the JSON string or a serialization error.
 pub fn generate_json(options: &[OptionDoc]) -> Result<String, NixDocError> {
     serde_json::to_string_pretty(options).map_err(|e| NixDocError::Serialization(e.to_string()))
 }
 
-// Generate HTNK for all the option values
+/// Generates an HTML document containing a table of NixOS module options.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+///
+/// # Returns
+/// A `Result` containing the generated HTML string or an error.
 pub fn generate_html(options: &[OptionDoc]) -> Result<String, NixDocError> {
     let mut output = String::from(
         "<!DOCTYPE html>
@@ -107,7 +123,13 @@ pub fn generate_html(options: &[OptionDoc]) -> Result<String, NixDocError> {
     Ok(output)
 }
 
-// Generate CSV for all the option values
+/// Generates a CSV formatted string documenting NixOS module options.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+///
+/// # Returns
+/// A `Result` containing the CSV string or an error.
 pub fn generate_csv(options: &[OptionDoc]) -> Result<String, NixDocError> {
     let mut wtr = csv::WriterBuilder::new()
         .has_headers(true)

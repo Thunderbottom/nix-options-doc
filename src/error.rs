@@ -8,8 +8,8 @@ pub enum NixDocError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("Git error: {0}")]
-    Git(#[from] git2::Error),
+    #[error("Git operation failed: {0}")]
+    GitOperation(String),
 
     #[error("Path error: {0}")]
     Path(#[from] std::path::StripPrefixError),

@@ -17,9 +17,17 @@ pub enum NixType {
     Unknown(String),
 }
 
-// Definition for types that are presentt in nix
-// Handle missing types as "Unknown"
 impl NixType {
+    /// Constructs a `NixType` from a given Nix type string.
+    ///
+    /// Interprets known basic types (e.g. "types.bool", "types.int") and returns the corresponding variant.
+    /// For unrecognized or complex types, returns `NixType::Unknown`.
+    ///
+    /// # Arguments
+    /// - `type_str`: A string slice representing the Nix type.
+    ///
+    /// # Returns
+    /// A `NixType` corresponding to the given type string.
     pub fn from_nix_str(type_str: &str) -> Self {
         // Basic types
         match type_str {

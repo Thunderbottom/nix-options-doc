@@ -1,11 +1,12 @@
-pub use clap::{Parser, ValueEnum};
 pub mod error;
 pub mod generate;
+pub mod parser;
 pub mod types;
+pub mod utils;
 
-use crate::error::NixDocError;
-use crate::types::NixType;
-use rnix::{SyntaxKind, SyntaxNode};
+use crate::{error::NixDocError, types::NixType};
+use clap::Parser;
+use gix::{progress::Discard, remote::fetch::Shallow};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -88,10 +89,6 @@ pub struct Cli {
     /// Show progress bar
     #[arg(short = 'P', long)]
     pub progress: bool,
-
-    /// Enable verbose output
-    #[arg(short, long)]
-    pub verbose: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -104,8 +101,15 @@ pub struct OptionDoc {
     pub line_number: usize,
 }
 
-// Parse a key=value string into a tuple
-// Used to replace dynamic variable definitions in nix files
+// Parses a string for a given key and replaces with the specified value.
+// Used to interpolate variables in nix module definition as nix does not
+// replace interpolated variables until evaluated.
+//
+// # Arguments
+// - `string`: A string in the format key=value
+//
+// # Returns
+// A Result containing two strings as separate key and value
 fn parse_key_value(s: &str) -> Result<(String, String), String> {
     let parts: Vec<&str> = s.splitn(2, '=').collect();
     if parts.len() != 2 || parts[0].is_empty() {
@@ -114,8 +118,15 @@ fn parse_key_value(s: &str) -> Result<(String, String), String> {
     Ok((parts[0].to_string(), parts[1].to_string()))
 }
 
-// Parse and filter module options based on path, option type,
-// default value, description
+/// Filters the list of option documentation entries based on CLI parameters.
+/// Applies filters such as prefix, type, search term, and presence of a default value or description.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+/// - `cli`: The CLI arguments containing filter criteria.
+///
+/// # Returns
+/// A vector of options that match the specified filters.
 pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     let mut filtered = options.to_vec();
 
@@ -158,66 +169,92 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     filtered
 }
 
-// Clone repository to temporary directory or return local path
+/// Prepares a local directory for processing Nix files.
+/// If the specified path exists locally, it is used directly; otherwise, if a Git URL is provided,
+/// the repository is cloned (using optional branch and depth settings) into a temporary directory.
+///
+/// # Arguments
+/// - `cli`: The CLI arguments containing the path, branch, depth, etc.
+///
+/// # Returns
+/// A tuple containing the path to the working directory and an optional `TempDir` (for cleanup).
 pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError> {
-    let path = &cli.path;
-
-    if Path::new(path).exists() {
-        return Ok((PathBuf::from(path), None));
-    };
+    // Check if the path is a local directory
+    let path = Path::new(&cli.path);
+    if path.exists() {
+        log::debug!("Found local path: {}", path.to_string_lossy());
+        return Ok((path.to_path_buf(), None));
+    }
 
     let temp_dir = TempDir::new()?;
-    let mut fo = git2::FetchOptions::new();
-    fo.depth(cli.depth as i32)
-        .download_tags(git2::AutotagOption::None);
+    let temp_path = temp_dir.path();
 
-    let mut builder = git2::build::RepoBuilder::new();
-    builder.fetch_options(fo);
-
-    match builder.clone(path, temp_dir.path()) {
-        Ok(repo) => {
-            let temp_path = repo.workdir().ok_or(NixDocError::NoWorkDir)?;
-
-            // Checkout specific branch/tag if requested
-            if let Some(ref branch) = cli.branch {
-                let obj = repo
-                    .revparse_single(&format!("origin/{}", branch))
-                    .or_else(|_| repo.revparse_single(branch))?;
-
-                let mut checkout_builder = git2::build::CheckoutBuilder::new();
-                checkout_builder.force();
-
-                repo.checkout_tree(&obj, Some(&mut checkout_builder))?;
-                repo.set_head_detached(obj.id())?;
-            }
-
-            Ok((temp_path.to_path_buf(), Some(temp_dir)))
-        }
-        Err(e) => match e.code() {
-            git2::ErrorCode::Auth => Err(NixDocError::GitClone(
-                path.to_string(),
-                e.message().to_string(),
-            )),
-            _ => Err(NixDocError::InvalidPath(path.to_string())),
-        },
+    // Attempt to fetch git repository
+    // Initialize interrupt handler.
+    unsafe {
+        gix::interrupt::init_handler(1, || {}).map_err(|e| {
+            NixDocError::GitOperation(format!("Failed to initialize interrupt handler: {}", e))
+        })?;
     }
+
+    let url = gix::url::parse(cli.path.as_bytes().into())
+        .map_err(|e| NixDocError::InvalidPath(format!("Invalid git URL: {}", e)))?;
+
+    // Prepare the clone builder
+    let mut prepare_clone = gix::prepare_clone(url, temp_path).map_err(|e| {
+        let err_msg = e.to_string();
+        if err_msg.contains("auth") || err_msg.contains("credentials") {
+            NixDocError::GitClone(cli.path.clone(), err_msg)
+        } else {
+            NixDocError::GitOperation(format!("Failed to prepare clone: {}", e))
+        }
+    })?;
+
+    // Configure shallow clone with the provided depth (defaults to 1)
+    let shallow = Shallow::DepthAtRemote(
+        std::num::NonZeroU32::new(cli.depth)
+            .unwrap_or_else(|| std::num::NonZeroU32::new(1).unwrap()),
+    );
+
+    if let Some(ref branch) = cli.branch {
+        prepare_clone = prepare_clone.with_ref_name(Some(branch)).unwrap();
+    }
+    let (mut prepare_checkout, _) = prepare_clone
+        .with_shallow(shallow)
+        .fetch_then_checkout(Discard, &gix::interrupt::IS_INTERRUPTED)
+        .map_err(|e| NixDocError::GitClone(cli.path.clone(), e.to_string()))?;
+
+    let (repo, _) = prepare_checkout
+        .main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED)
+        .map_err(|e| NixDocError::GitOperation(format!("Failed to checkout worktree: {}", e)))?;
+
+    let work_dir = repo.work_dir().ok_or(NixDocError::NoWorkDir)?;
+    Ok((work_dir.to_path_buf(), Some(temp_dir)))
 }
 
-// Walk through the directory structure and
-// parse AST for every .nix file for module options.
+/// Recursively collects NixOS module options from all .nix files in the specified directory,
+/// excluding specified directories and applying variable replacements.
+///
+/// # Arguments
+/// - `dir`: The base directory to search for Nix files.
+/// - `exclude_dirs`: A list of directory paths to exclude from processing.
+/// - `replacements`: A map of variable replacements for dynamic parts in option definitions.
+/// - `show_progress`: Displays a progress bar if set to true.
+///
+/// # Returns
+/// A `Result` containing a vector of option documentation entries or an error.
 pub fn collect_options(
     dir: &Path,
     exclude_dirs: &[String],
     replacements: &HashMap<String, String>,
-    verbose: bool,
     show_progress: bool,
 ) -> Result<Vec<OptionDoc>, NixDocError> {
     let mut options = Vec::new();
 
-    if verbose && !replacements.is_empty() {
-        eprintln!("Using variable replacements:");
+    if !replacements.is_empty() {
+        log::debug!("Using variable replacements:");
         for (key, value) in replacements {
-            eprintln!("  ${{{0}}} => {1}", key, value);
+            log::debug!("\t${{{0}}} => {1}", key, value);
         }
     }
 
@@ -235,10 +272,10 @@ pub fn collect_options(
         })
         .collect();
 
-    if verbose && !exclude_paths.is_empty() {
-        eprintln!("Excluding directories:");
+    if !exclude_paths.is_empty() {
+        log::debug!("Excluding directories:");
         for path in &exclude_paths {
-            eprintln!("  {}", path.display());
+            log::debug!("\t{}", path.display());
         }
     }
 
@@ -253,9 +290,7 @@ pub fn collect_options(
             .any(|excl| entry.path().starts_with(excl));
 
         if should_exclude {
-            if verbose {
-                eprintln!("Skipping excluded path: {}", entry.path().display());
-            }
+            log::debug!("Skipping excluded path: {}", entry.path().display());
             continue;
         }
 
@@ -286,16 +321,17 @@ pub fn collect_options(
             }
         }
 
-        if verbose {
-            eprintln!("Processing file: {}", file_path.display());
-        }
+        log::debug!(
+            "Processing file: {}",
+            file_path.strip_prefix(dir)?.to_string_lossy()
+        );
 
         match fs::read_to_string(&file_path) {
             Ok(content) => {
                 let parse = rnix::Root::parse(&content);
                 let relative_path = file_path.strip_prefix(dir)?.to_string_lossy().into_owned();
 
-                visit_node(
+                parser::visit_node(
                     &parse.syntax(),
                     &relative_path,
                     &mut options,
@@ -305,9 +341,7 @@ pub fn collect_options(
                 )?;
             }
             Err(e) => {
-                if verbose {
-                    eprintln!("  Error reading file: {}", e);
-                }
+                log::error!("  Error reading file: {}", e);
                 return Err(NixDocError::Io(e));
             }
         }
@@ -317,9 +351,7 @@ pub fn collect_options(
         pb.finish_with_message("Processing complete");
     }
 
-    if verbose {
-        eprintln!("Total options found: {}", options.len());
-    }
+    log::debug!("Total options found: {}", options.len());
 
     Ok(options)
 }
@@ -333,220 +365,16 @@ fn is_hidden(entry: &walkdir::DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-// Recursively parse through the AST attributes
-// and find children nodes to parse for option values.
-fn visit_node(
-    node: &SyntaxNode,
-    file_path: &str,
-    options: &mut Vec<OptionDoc>,
-    prefix: &str,
-    replacements: &HashMap<String, String>,
-    source_text: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-        let key = node
-            .children()
-            .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
-            .as_ref()
-            .map(|n| parse_attrpath(n, replacements));
-
-        if let Some(value_node) = node.children().nth(1) {
-            if let Some(key) = key {
-                let new_prefix = if prefix.is_empty() {
-                    key
-                } else {
-                    format!("{}.{}", prefix, key)
-                };
-                parse_attrset(
-                    &value_node,
-                    file_path,
-                    options,
-                    &new_prefix,
-                    replacements,
-                    source_text,
-                )?;
-            }
-        }
-    } else {
-        // Visit all children for other node types
-        for child in node.children() {
-            visit_node(
-                &child,
-                file_path,
-                options,
-                prefix,
-                replacements,
-                source_text,
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
-// Parse attribute path for option names.
-fn parse_attrpath(node: &SyntaxNode, replacements: &HashMap<String, String>) -> String {
-    let mut path = Vec::new();
-    for child in node.children() {
-        if child.kind() == SyntaxKind::NODE_IDENT {
-            path.push(child.text().to_string());
-        } else if child.kind() == SyntaxKind::NODE_DYNAMIC {
-            // This is an interpolation node like ${namespace}
-            let interpol_text = child.text().to_string();
-
-            // Extract the variable name from ${...}
-            let var_name = interpol_text
-                .trim_start_matches("${")
-                .trim_end_matches("}")
-                .trim();
-
-            // Look up the replacement value or keep the original
-            let replacement = replacements
-                .get(var_name)
-                .cloned()
-                .unwrap_or_else(|| format!("${{{}}}", var_name));
-
-            path.push(replacement);
-        }
-    }
-    path.join(".")
-}
-
-// Parse line number for each option definition.
-// Will be formatted in the output to point to the
-// exact definition in file.
-fn get_line_number(node: &SyntaxNode, source_text: &str) -> usize {
-    // Get the text range of this node
-    let text_range = node.text_range();
-    let start_offset: usize = text_range.start().into();
-
-    // Count newlines up to this position
-    let line_count = source_text[..start_offset]
-        .chars()
-        .filter(|&c| c == '\n')
-        .count();
-
-    // Line numbers are 1-based
-    line_count + 1
-}
-
-// Parse attribute set and generate option documentation.
-fn parse_attrset(
-    node: &SyntaxNode,
-    file_path: &str,
-    options: &mut Vec<OptionDoc>,
-    current_prefix: &str,
-    replacements: &HashMap<String, String>,
-    source_text: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match node.kind() {
-        // Nested attributes
-        SyntaxKind::NODE_ATTR_SET => {
-            for child in node.children() {
-                visit_node(
-                    &child,
-                    file_path,
-                    options,
-                    current_prefix,
-                    replacements,
-                    source_text,
-                )?;
-            }
-        }
-        // Child node, parse for mkOption or mkEnableOption
-        SyntaxKind::NODE_APPLY => {
-            let fn_name = node
-                .children()
-                .find(|n| n.kind() == SyntaxKind::NODE_SELECT)
-                .and_then(|n| n.children().last())
-                .map(|n| n.text().to_string());
-
-            match fn_name.as_deref() {
-                Some("mkEnableOption") => {
-                    let description = node
-                        .children()
-                        .find(|n| n.kind() == SyntaxKind::NODE_STRING)
-                        .map(|n| {
-                            let desc_text = n.text().to_string().trim_matches('"').to_string();
-                            // Apply replacements to description
-                            replacements.iter().fold(desc_text, |acc, (key, value)| {
-                                acc.replace(&format!("${{{}}}", key), value)
-                            })
-                        });
-
-                    options.retain(|opt| opt.name != current_prefix);
-                    options.push(OptionDoc {
-                        name: current_prefix.to_string(),
-                        description,
-                        nix_type: NixType::Bool,
-                        default_value: Some(String::from("false")),
-                        file_path: file_path.to_string(),
-                        line_number: get_line_number(node, source_text),
-                    });
-                }
-                Some("mkOption") => {
-                    let mut nix_type = NixType::Unknown("any".to_string());
-                    let mut description = None;
-                    let mut default_value = None;
-
-                    if let Some(attr_set) = node
-                        .children()
-                        .find(|n| n.kind() == SyntaxKind::NODE_ATTR_SET)
-                    {
-                        for attr in attr_set.children() {
-                            if attr.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
-                                let attr_key = attr
-                                    .children()
-                                    .find(|n| n.kind() == SyntaxKind::NODE_ATTRPATH)
-                                    .and_then(|n| n.children().next())
-                                    .map(|n| n.text().to_string());
-
-                                let attr_value = attr.children().nth(1);
-
-                                match (attr_key.as_deref(), attr_value) {
-                                    (Some("type"), Some(v)) => {
-                                        let type_str = v.text().to_string();
-                                        nix_type = NixType::from_nix_str(&type_str);
-                                    }
-                                    (Some("description"), Some(v)) => {
-                                        let desc_text =
-                                            v.text().to_string().trim_matches('"').to_string();
-                                        description = Some(replacements.iter().fold(
-                                            desc_text,
-                                            |acc, (key, value)| {
-                                                acc.replace(&format!("${{{}}}", key), value)
-                                            },
-                                        ));
-                                    }
-                                    (Some("default"), Some(v)) => {
-                                        default_value = Some(v.text().to_string());
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-
-                    options.retain(|opt| opt.name != current_prefix);
-                    options.push(OptionDoc {
-                        name: current_prefix.to_string(),
-                        description,
-                        nix_type,
-                        default_value,
-                        file_path: file_path.to_string(),
-                        line_number: get_line_number(node, source_text),
-                    });
-                }
-                _ => {}
-            }
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
-
-// Generate output document in the specified format
+/// Generates documentation for the given options in the specified output format.
+/// Optionally sorts the options alphabetically.
+///
+/// # Arguments
+/// - `options`: A slice of option documentation entries.
+/// - `format`: The desired output format (Markdown, JSON, HTML, or CSV).
+/// - `sorted`: If true, sorts the options by name.
+///
+/// # Returns
+/// A `Result` containing the generated documentation string or an error.
 pub fn generate_doc(
     options: &[OptionDoc],
     format: OutputFormat,
