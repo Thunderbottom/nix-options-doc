@@ -1,5 +1,5 @@
 use super::*;
-use crate::NixType;
+use crate::{generate::generate_markdown, NixType};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -90,6 +90,7 @@ fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error>> {
             nix_type: NixType::Bool,
             default_value: Some("false".to_string()),
             file_path: "test.nix".to_string(),
+            line_number: 1,
         },
         OptionDoc {
             name: "options.test.opt2".to_string(),
@@ -97,14 +98,15 @@ fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error>> {
             nix_type: NixType::Unknown("lib.types.str".to_string()),
             default_value: None,
             file_path: "test.nix".to_string(),
+            line_number: 2,
         },
     ];
 
     // Test unsorted output
     let markdown = generate_markdown(&options)?;
     println!("{:?}", markdown);
-    assert!(markdown.contains("| [`options.test.opt1`](test.nix)"));
-    assert!(markdown.contains("| [`options.test.opt2`](test.nix)"));
+    assert!(markdown.contains("| [`options.test.opt1`](test.nix#L1)"));
+    assert!(markdown.contains("| [`options.test.opt2`](test.nix#L2)"));
     assert!(markdown.contains("Test option 1"));
     assert!(markdown.contains("Test option 2"));
 
