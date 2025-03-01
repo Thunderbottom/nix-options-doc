@@ -1,8 +1,12 @@
 <h1 align="center">nix-options-doc</h1>
 
-A command-line tool that generates multi-format documentation for NixOS module options by parsing Nix files.
+A command-line tool that generates multi-format Nix modules documentation.
 
-A live preview of the generated documentation can be found at: [Thunderbottom/flakes](https://github.com/Thunderbottom/flakes/blob/main/options.md)
+A live version of the generated documentation can be found at: [Thunderbottom/flakes](https://github.com/Thunderbottom/flakes/blob/main/options.md)
+
+## Why?
+
+I was always fascinated by various Nix projects that showcased their Nix module documentation, yet I failed to find any tool to do so for my own projects. And so I wrote one. This has also served me as an exercise in learning Rust.
 
 ## Features
 
@@ -18,10 +22,14 @@ A live preview of the generated documentation can be found at: [Thunderbottom/fl
 
 ## Installation
 
+### Pre-built Binary
+
+Pre-built binaries for ARM and x86 based GNU/Linux systems are available under [releases](/releases).
+
 ### Using Cargo
 
 ```bash
-$ cargo install nix-options-doc
+$ cargo install --git https://github.com/Thunderbottom/nix-options-doc
 ```
 
 Or build from source:
@@ -153,9 +161,11 @@ $ cargo test
 
 - clap: Command-line argument parsing
 - csv: CSV file generation
-- git2: Git repository handling
+- env_logger: Log configuration through environment variables
+- gix: Git repository handling
 - html-escape: HTML entity escaping
 - indicatif: Progress bar
+- log: Simple logging utility
 - rnix: Nix parser
 - serde_json: JSON serialization
 - serde: Serialization/deserialization
