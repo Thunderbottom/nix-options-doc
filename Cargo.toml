@@ -1,11 +1,11 @@
 [package]
 name = "nix-options-doc"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Chinmay D. Pai <chinmaydpai@gmail.com>"]
 edition = "2021"
 license = "MIT"
-description = "Generate Markdown documentation for NixOS module options"
-keywords = ["nixos", "markdown", "documentation"]
+description = "Generate multi-format documentation for Nix module options"
+keywords = ["nix", "markdown", "html", "json", "csv", "documentation"]
 repository = "https://github.com/Thunderbottom/nix-options-doc"
 homepage = "https://github.com/Thunderbottom/nix-options-doc"
 readme = "README.md"
@@ -15,12 +15,14 @@ publish = false
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 csv = "1.3"
-git2 = "0.20"
+env_logger = "0.11"
+gix = { version = "0.70.0", features = ["blocking-network-client", "blocking-http-transport-curl"] }
 html-escape = "0.2"
 indicatif = "0.17"
+log = "0.4"
 rnix = "0.12"
-serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.17"
 thiserror = "2.0"
 walkdir = "2.5"
