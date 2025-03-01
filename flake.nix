@@ -24,17 +24,9 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-        ];
-        buildInputs = with pkgs; [
-          openssl
-        ];
       in
       {
         devShells.default = pkgs.mkShell {
-          inherit buildInputs nativeBuildInputs;
-
           packages = with pkgs; [
             rust-bin.stable.latest.default
             rust-analyzer
@@ -53,8 +45,6 @@
             version = manifest.version;
             src = pkgs.lib.cleanSource ./.;
             cargoLock.lockFile = ./Cargo.lock;
-
-            inherit buildInputs nativeBuildInputs;
           };
       }
     );
