@@ -100,7 +100,6 @@ Options:
       --has-description            Only show options that have a description
   -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
   -P, --progress                   Show progress bar
-  -v, --verbose                    Enable verbose output
   -h, --help                       Print help
   -V, --version                    Print version
 ```
