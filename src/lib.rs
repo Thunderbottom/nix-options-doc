@@ -58,7 +58,7 @@ pub struct Cli {
 
     /// Filter options by prefix (e.g. "services.nginx")
     #[arg(long)]
-    pub prefix: Option<String>,
+    pub filter_by_prefix: Option<String>,
 
     /// Replace nix variable with the specified value in option paths
     /// (can be used multiple times)
@@ -72,7 +72,7 @@ pub struct Cli {
 
     /// Filter options by type (e.g. "bool", "string")
     #[arg(long)]
-    pub type_filter: Option<String>,
+    pub filter_by_type: Option<String>,
 
     /// Only show options that have a default value
     #[arg(long)]
@@ -135,12 +135,12 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     let mut filtered = options.to_vec();
 
     // Filter by prefix
-    if let Some(ref prefix) = cli.prefix {
+    if let Some(ref prefix) = cli.filter_by_prefix {
         filtered.retain(|opt| opt.name.starts_with(prefix));
     }
 
     // Filter by type
-    if let Some(ref type_str) = cli.type_filter {
+    if let Some(ref type_str) = cli.filter_by_type {
         filtered.retain(|opt| {
             let type_info = opt.nix_type.to_string().to_lowercase();
             type_info.contains(&type_str.to_lowercase())
