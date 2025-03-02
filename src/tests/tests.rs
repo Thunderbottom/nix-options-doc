@@ -161,7 +161,7 @@ fn test_cli_args() {
 
     let args = Cli::parse_from(["program", "--path", "/test/path"]);
     assert_eq!(args.path, "/test/path");
-    assert_eq!(args.out, "nix-options.md"); // default value
+    assert_eq!(args.out, "stdout"); // default value
     assert!(!args.sort); // default false
 
     let args = Cli::parse_from(["program", "--out", "stdout", "--sort"]);

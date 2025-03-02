@@ -53,7 +53,7 @@ $ ./results/bin/nix-options-doc --path /etc/nixos --out stdout
 
 ```bash
 # Generate documentation for current directory
-# Stores the generated documentation as nix-options.md
+# Prints the generated documentation to stdout
 $ nix-options-doc
 
 # Generate documentation for a specific path
@@ -95,7 +95,7 @@ Usage: nix-options-doc [OPTIONS]
 
 Options:
   -p, --path <PATH>                Local path or remote git repository URL to the nix configuration [default: .]
-  -o, --out <OUT>                  Path to the output file or 'stdout' [default: nix-options.md]
+  -o, --out <OUT>                  Path to the output file or 'stdout' [default: stdout]
   -f, --format <FORMAT>            Output format [default: markdown] [possible values: markdown, json, html, csv]
   -s, --sort                       Whether the output names should be sorted
   -b, --branch <BRANCH>            Git branch or tag to use (if repository URL provided)
