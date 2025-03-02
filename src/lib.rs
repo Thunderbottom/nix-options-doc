@@ -37,7 +37,7 @@ pub struct Cli {
     pub path: String,
 
     /// Path to the output file or 'stdout'
-    #[arg(short, long, default_value = "nix-options.md")]
+    #[arg(short, long, default_value = "stdout")]
     pub out: String,
 
     /// Output format
