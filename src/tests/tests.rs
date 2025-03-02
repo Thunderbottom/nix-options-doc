@@ -33,7 +33,7 @@ fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
 "#;
     create_test_file(temp_dir.path(), "flake.nix", content)?;
 
-    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false)?;
+    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
     assert_eq!(options.len(), 1);
     assert_eq!(options[0].name, "options.test.simple.enable");
     assert_eq!(options[0].nix_type.to_string(), "boolean");
@@ -69,7 +69,7 @@ fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
 "#;
     create_test_file(temp_dir.path(), "test.nix", content)?;
 
-    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false)?;
+    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
     assert_eq!(options.len(), 2);
 
     let string_opt = options
@@ -148,7 +148,7 @@ fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error>> {
 "#;
     create_test_file(temp_dir.path(), ".hidden.nix", content)?;
 
-    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false)?;
+    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
     assert_eq!(options.len(), 0);
 
     Ok(())
@@ -184,7 +184,7 @@ fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error>> {
 "#;
     create_test_file(temp_dir.path(), "test.nix", content)?;
 
-    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false)?;
+    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
     let enable_options: Vec<_> = options
         .iter()
         .filter(|o| o.name == "options.test.enable")
@@ -233,7 +233,7 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Test without exclusion
-    let all_options = collect_options(temp_dir.path(), &[], &HashMap::new(), false)?;
+    let all_options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
     assert!(!all_options.is_empty()); // At least the main option
     assert!(all_options.iter().any(|o| o.name == "options.main.enable"));
 
@@ -243,7 +243,13 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error>> {
         .join("excluded")
         .to_string_lossy()
         .to_string()];
-    let filtered_options = collect_options(temp_dir.path(), &exclude_dirs, &HashMap::new(), false)?;
+    let filtered_options = collect_options(
+        temp_dir.path(),
+        &exclude_dirs,
+        &HashMap::new(),
+        false,
+        false,
+    )?;
 
     assert!(filtered_options
         .iter()
@@ -280,7 +286,7 @@ fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error>> {
     replacements.insert("namespace".to_string(), "snowflake".to_string());
     replacements.insert("system".to_string(), "x86_64-linux".to_string());
 
-    let options = collect_options(temp_dir.path(), &[], &replacements, false)?;
+    let options = collect_options(temp_dir.path(), &[], &replacements, false, false)?;
 
     // Check if options contain the replaced values
     let bluetooth_options: Vec<_> = options
@@ -327,7 +333,7 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
 
     // Test non-existent path
     let non_existent = temp_dir.path().join("non-existent");
-    let result = collect_options(&non_existent, &[], &HashMap::new(), false);
+    let result = collect_options(&non_existent, &[], &HashMap::new(), false, false);
     assert!(result.is_err());
 
     // Create a file with invalid Nix syntax
@@ -343,7 +349,7 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
 
     // The parser might handle syntax errors gracefully, so we'll
     // just check that it doesn't panic
-    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false);
+    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false);
 
     Ok(())
 }

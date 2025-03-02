@@ -107,6 +107,7 @@ Options:
       --has-default                Only show options that have a default value
       --has-description            Only show options that have a description
   -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
+      --follow-symlinks            Enable traversing through symbolic links
   -P, --progress                   Show progress bar
   -h, --help                       Print help
   -V, --version                    Print version

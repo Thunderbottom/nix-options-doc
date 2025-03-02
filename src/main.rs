@@ -27,7 +27,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get replacements for any dynamic variables if defined
     let replacements: HashMap<String, String> = cli.replace.clone().into_iter().collect();
-    let options = collect_options(&path, &cli.exclude_dir, &replacements, cli.progress)?;
+    let options = collect_options(
+        &path,
+        &cli.exclude_dir,
+        &replacements,
+        cli.progress,
+        cli.follow_symlinks,
+    )?;
 
     if options.is_empty() {
         log::warn!("No NixOS options found in the specified path");

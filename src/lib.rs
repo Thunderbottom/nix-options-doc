@@ -86,6 +86,10 @@ pub struct Cli {
     #[arg(short = 'e', long, value_delimiter = ',')]
     pub exclude_dir: Vec<String>,
 
+    /// Enable traversing through symbolic links
+    #[arg(long)]
+    pub follow_symlinks: bool,
+
     /// Show progress bar
     #[arg(short = 'P', long)]
     pub progress: bool,
@@ -248,6 +252,7 @@ pub fn collect_options(
     exclude_dirs: &[String],
     replacements: &HashMap<String, String>,
     show_progress: bool,
+    follow_symlinks: bool,
 ) -> Result<Vec<OptionDoc>, NixDocError> {
     let mut options = Vec::new();
 
@@ -281,7 +286,7 @@ pub fn collect_options(
 
     // Collect all .nix files first
     let mut nix_files = Vec::new();
-    for entry in WalkDir::new(dir).follow_links(true).into_iter() {
+    for entry in WalkDir::new(dir).follow_links(follow_symlinks).into_iter() {
         let entry = entry?;
 
         // Check if this path is in an excluded directory
