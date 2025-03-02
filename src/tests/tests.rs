@@ -154,6 +154,67 @@ fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Tests the parsing of multi-line description in option definition.
+#[test]
+fn test_multiline_description_parsing() -> Result<(), Box<dyn std::error::Error>> {
+    let temp_dir = TempDir::new()?;
+    let content = r#"
+{
+  options.test.complex = {
+    packages = lib.mkOption {
+      type = with lib.types; listOf str;
+      description = ''
+        A multi-line description
+        with multiple lines
+        and some indentation.
+      '';
+      default = [];
+    };
+    values = lib.mkOption {
+      type = with lib.types; listOf int;
+      description = ''
+        A multi-line description
+        with multiple lines.
+
+        And some more text across
+        another paragraph.
+      '';
+      default = [1, 2];
+    };
+  };
+}
+"#;
+    create_test_file(temp_dir.path(), "flake.nix", content)?;
+
+    let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+    assert_eq!(options.len(), 2);
+    assert_eq!(options[0].name, "options.test.complex.packages");
+    assert_eq!(options[1].name, "options.test.complex.values");
+
+    assert_eq!(
+        options[0].nix_type.to_string(),
+        "with lib.types; listOf str"
+    );
+    assert_eq!(
+        options[1].nix_type.to_string(),
+        "with lib.types; listOf int"
+    );
+
+    // Check multi-line description
+    assert_eq!(
+        options[0].description,
+        Some("A multi-line description\nwith multiple lines\nand some indentation.".to_string())
+    );
+    assert_eq!(
+        options[1].description,
+        Some("A multi-line description\nwith multiple lines.\n\nAnd some more text across\nanother paragraph.".to_string())
+    );
+    assert_eq!(options[0].default_value, Some("[]".to_string()));
+    assert_eq!(options[1].default_value, Some("[1, 2]".to_string()));
+
+    Ok(())
+}
+
 /// Tests the parsing of command-line arguments and verifies that default values are correctly assigned.
 #[test]
 fn test_cli_args() {

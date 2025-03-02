@@ -153,7 +153,16 @@ fn parse_attrset(
                         .children()
                         .find(|n| n.kind() == SyntaxKind::NODE_STRING)
                         .map(|n| {
-                            let desc_text = n.text().to_string().trim_matches('"').to_string();
+                            let desc_text = n
+                                .text()
+                                .to_string()
+                                .trim_matches(['"', '\''])
+                                .lines()
+                                .map(str::trim)
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                                .trim()
+                                .to_string();
                             // Apply replacements to description
                             apply_replacements(&desc_text, replacements)
                         });
@@ -193,8 +202,17 @@ fn parse_attrset(
                                         nix_type = NixType::from_nix_str(&type_str);
                                     }
                                     (Some("description"), Some(v)) => {
-                                        let desc_text =
-                                            v.text().to_string().trim_matches('"').to_string();
+                                        let desc_text = v
+                                            .text()
+                                            .to_string()
+                                            .trim_matches(['"', '\''])
+                                            .lines()
+                                            .map(str::trim)
+                                            .collect::<Vec<_>>()
+                                            .join("\n")
+                                            .trim()
+                                            .to_string();
+
                                         description =
                                             Some(apply_replacements(&desc_text, replacements));
                                     }
