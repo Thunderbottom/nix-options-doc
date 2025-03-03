@@ -221,14 +221,14 @@ fn test_cli_args() {
     use clap::Parser;
 
     let args = Cli::parse_from(["program", "--path", "/test/path"]);
-    assert_eq!(args.path, "/test/path");
-    assert_eq!(args.out, "stdout"); // default value
-    assert!(!args.sort); // default false
+    assert_eq!(args.io.path, "/test/path");
+    assert_eq!(args.io.out, "stdout"); // default value
+    assert!(!args.io.sort); // default false
 
     let args = Cli::parse_from(["program", "--out", "stdout", "--sort"]);
-    assert_eq!(args.path, "."); // default value
-    assert_eq!(args.out, "stdout");
-    assert!(args.sort);
+    assert_eq!(args.io.path, "."); // default value
+    assert_eq!(args.io.out, "stdout");
+    assert!(args.io.sort);
 }
 
 /// Tests that duplicate option definitions are prevented by ensuring only one instance is kept.
@@ -430,16 +430,18 @@ fn test_cli_replace_argument() {
         "system=x86_64-linux",
     ]);
 
-    assert_eq!(args.replace.len(), 2);
+    assert_eq!(args.filter.replace.len(), 2);
     assert!(args
+        .filter
         .replace
         .contains(&("namespace".to_string(), "snowflake".to_string())));
     assert!(args
+        .filter
         .replace
         .contains(&("system".to_string(), "x86_64-linux".to_string())));
 
     // Convert to HashMap and verify
-    let replacements: HashMap<String, String> = args.replace.into_iter().collect();
+    let replacements: HashMap<String, String> = args.filter.replace.into_iter().collect();
     assert_eq!(
         replacements.get("namespace"),
         Some(&"snowflake".to_string())

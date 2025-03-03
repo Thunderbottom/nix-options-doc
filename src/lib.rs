@@ -5,7 +5,7 @@ pub mod types;
 pub mod utils;
 
 use crate::{error::NixDocError, types::NixType};
-use clap::Parser;
+use clap::{command, ArgGroup, Args, Parser};
 use gix::{progress::Discard, remote::fetch::Shallow};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -32,6 +32,23 @@ pub enum OutputFormat {
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
+    #[command(flatten)]
+    pub io: IoOptions,
+
+    #[command(flatten)]
+    pub git: GitOptions,
+
+    #[command(flatten)]
+    pub filter: FilterOptions,
+
+    #[command(flatten)]
+    pub util: UtilityOptions,
+}
+
+/// IO Command Options
+#[derive(Args)]
+#[command(group(ArgGroup::new("io")))]
+pub struct IoOptions {
     /// Local path or remote git repository URL to the nix configuration
     #[arg(short, long, default_value = ".")]
     pub path: String,
@@ -44,10 +61,15 @@ pub struct Cli {
     #[arg(short = 'f', long, default_value = "markdown")]
     pub format: OutputFormat,
 
-    /// Whether the output names should be sorted
+    /// Whether the output should be sorted (asc.)
     #[arg(short, long)]
     pub sort: bool,
+}
 
+/// Git Options
+#[derive(Args)]
+#[command(group(ArgGroup::new("git")))]
+pub struct GitOptions {
     /// Git branch or tag to use (if repository URL provided)
     #[arg(short, long)]
     pub branch: Option<String>,
@@ -55,24 +77,23 @@ pub struct Cli {
     /// Git commit depth (set to 1 for shallow clone)
     #[arg(short, long, default_value = "1")]
     pub depth: u32,
+}
 
+/// Filter Options
+#[derive(Args)]
+#[command(group(ArgGroup::new("filter")))]
+pub struct FilterOptions {
     /// Filter options by prefix (e.g. "services.nginx")
-    #[arg(long)]
+    #[arg(long, value_name = "PREFIX")]
     pub filter_by_prefix: Option<String>,
 
-    /// Replace nix variable with the specified value in option paths
-    /// (can be used multiple times)
-    /// Format: --replace key=value
-    #[arg(long, value_parser = parse_key_value)]
-    pub replace: Vec<(String, String)>,
+    /// Filter options by type (e.g. "bool", "string")
+    #[arg(long, value_name = "NIX_TYPE")]
+    pub filter_by_type: Option<String>,
 
     /// Search in option names and descriptions
-    #[arg(long)]
+    #[arg(long, value_name = "OPTION")]
     pub search: Option<String>,
-
-    /// Filter options by type (e.g. "bool", "string")
-    #[arg(long)]
-    pub filter_by_type: Option<String>,
 
     /// Only show options that have a default value
     #[arg(long)]
@@ -82,6 +103,18 @@ pub struct Cli {
     #[arg(long)]
     pub has_description: bool,
 
+    /// Replace nix variables in the generated
+    /// document with the specified value
+    /// (can be used multiple times)
+    #[arg(long, value_parser = parse_key_value)]
+    #[arg(value_name = "KEY=VALUE")]
+    pub replace: Vec<(String, String)>,
+}
+
+/// Utility Options
+#[derive(Args)]
+#[command(group(ArgGroup::new("utility")))]
+pub struct UtilityOptions {
     /// Directories to exclude from processing (can be specified multiple times)
     #[arg(short = 'e', long, value_delimiter = ',')]
     pub exclude_dir: Vec<String>,
@@ -91,7 +124,7 @@ pub struct Cli {
     pub follow_symlinks: bool,
 
     /// Show progress bar
-    #[arg(short = 'P', long)]
+    #[arg(long)]
     pub progress: bool,
 }
 
@@ -135,12 +168,12 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     let mut filtered = options.to_vec();
 
     // Filter by prefix
-    if let Some(ref prefix) = cli.filter_by_prefix {
+    if let Some(ref prefix) = cli.filter.filter_by_prefix {
         filtered.retain(|opt| opt.name.starts_with(prefix));
     }
 
     // Filter by type
-    if let Some(ref type_str) = cli.filter_by_type {
+    if let Some(ref type_str) = cli.filter.filter_by_type {
         filtered.retain(|opt| {
             let type_info = opt.nix_type.to_string().to_lowercase();
             type_info.contains(&type_str.to_lowercase())
@@ -148,7 +181,7 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     }
 
     // Filter by search text
-    if let Some(ref search) = cli.search {
+    if let Some(ref search) = cli.filter.search {
         let search_lower = search.to_lowercase();
         filtered.retain(|opt| {
             opt.name.to_lowercase().contains(&search_lower)
@@ -161,12 +194,12 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     }
 
     // Filter by having default value
-    if cli.has_default {
+    if cli.filter.has_default {
         filtered.retain(|opt| opt.default_value.is_some());
     }
 
     // Filter by having description
-    if cli.has_description {
+    if cli.filter.has_description {
         filtered.retain(|opt| opt.description.is_some());
     }
 
@@ -184,7 +217,7 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
 /// A tuple containing the path to the working directory and an optional `TempDir` (for cleanup).
 pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError> {
     // Check if the path is a local directory
-    let path = Path::new(&cli.path);
+    let path = Path::new(&cli.io.path);
     if path.exists() {
         log::debug!("Found local path: {}", path.to_string_lossy());
         return Ok((path.to_path_buf(), None));
@@ -201,14 +234,14 @@ pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError
         })?;
     }
 
-    let url = gix::url::parse(cli.path.as_bytes().into())
+    let url = gix::url::parse(cli.io.path.as_bytes().into())
         .map_err(|e| NixDocError::InvalidPath(format!("Invalid git URL: {}", e)))?;
 
     // Prepare the clone builder
     let mut prepare_clone = gix::prepare_clone(url, temp_path).map_err(|e| {
         let err_msg = e.to_string();
         if err_msg.contains("auth") || err_msg.contains("credentials") {
-            NixDocError::GitClone(cli.path.clone(), err_msg)
+            NixDocError::GitClone(cli.io.path.clone(), err_msg)
         } else {
             NixDocError::GitOperation(format!("Failed to prepare clone: {}", e))
         }
@@ -216,17 +249,17 @@ pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError
 
     // Configure shallow clone with the provided depth (defaults to 1)
     let shallow = Shallow::DepthAtRemote(
-        std::num::NonZeroU32::new(cli.depth)
+        std::num::NonZeroU32::new(cli.git.depth)
             .unwrap_or_else(|| std::num::NonZeroU32::new(1).unwrap()),
     );
 
-    if let Some(ref branch) = cli.branch {
+    if let Some(ref branch) = cli.git.branch {
         prepare_clone = prepare_clone.with_ref_name(Some(branch)).unwrap();
     }
     let (mut prepare_checkout, _) = prepare_clone
         .with_shallow(shallow)
         .fetch_then_checkout(Discard, &gix::interrupt::IS_INTERRUPTED)
-        .map_err(|e| NixDocError::GitClone(cli.path.clone(), e.to_string()))?;
+        .map_err(|e| NixDocError::GitClone(cli.io.path.clone(), e.to_string()))?;
 
     let (repo, _) = prepare_checkout
         .main_worktree(Discard, &gix::interrupt::IS_INTERRUPTED)
@@ -346,7 +379,7 @@ pub fn collect_options(
                 )?;
             }
             Err(e) => {
-                log::error!("  Error reading file: {}", e);
+                log::error!("Error reading file: {}", e);
                 return Err(NixDocError::Io(e));
             }
         }

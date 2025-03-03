@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     log::info!("Starting {}", env!("CARGO_PKG_NAME"));
-    log::debug!("Input path: {}", cli.path);
-    log::debug!("Output: {}", cli.out);
+    log::debug!("Input path: {}", cli.io.path);
+    log::debug!("Output: {}", cli.io.out);
 
     let (path, _temp_dir) = prepare_path(&cli)?;
 
@@ -26,13 +26,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     log::debug!("Collecting options...");
 
     // Get replacements for any dynamic variables if defined
-    let replacements: HashMap<String, String> = cli.replace.clone().into_iter().collect();
+    let replacements: HashMap<String, String> = cli.filter.replace.clone().into_iter().collect();
     let options = collect_options(
         &path,
-        &cli.exclude_dir,
+        &cli.util.exclude_dir,
         &replacements,
-        cli.progress,
-        cli.follow_symlinks,
+        cli.util.progress,
+        cli.util.follow_symlinks,
     )?;
 
     if options.is_empty() {
@@ -50,21 +50,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     log::debug!("Generating documentation...");
 
-    let output = generate_doc(&filtered_options, cli.format, cli.sort)?;
+    let output = generate_doc(&filtered_options, cli.io.format, cli.io.sort)?;
 
     // Output to stdout or file path
-    if cli.out == "stdout" {
+    if cli.io.out == "stdout" {
         let stdout = std::io::stdout();
         let mut handle = stdout.lock();
 
         handle.write_all(output.as_bytes())?;
     } else {
-        fs::write(&cli.out, &output)?;
+        fs::write(&cli.io.out, &output)?;
         log::info!(
             "Found {} options (filtered from {} total). Documentation generated in: {}",
             filtered_options.len(),
             options.len(),
-            cli.out
+            cli.io.out
         );
     }
 
