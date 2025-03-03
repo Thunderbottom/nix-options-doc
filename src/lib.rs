@@ -109,6 +109,12 @@ pub struct FilterOptions {
     #[arg(long, value_parser = parse_key_value)]
     #[arg(value_name = "KEY=VALUE")]
     pub replace: Vec<(String, String)>,
+
+    /// Remove a specified prefix from generated
+    /// option names (must start with 'options.')
+    /// This gets applied before all other filters
+    #[arg(long)]
+    pub strip_prefix: Option<String>,
 }
 
 /// Utility Options
@@ -166,6 +172,40 @@ fn parse_key_value(s: &str) -> Result<(String, String), String> {
 /// A vector of options that match the specified filters.
 pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     let mut filtered = options.to_vec();
+
+    // Strip prefix: `options.*`
+    if let Some(ref strip_prefix) = cli.filter.strip_prefix {
+        if !strip_prefix.starts_with("options.") {
+            log::warn!(
+                "The argument for `--strip-prefix` should start with `options.`, Got: '{}'",
+                strip_prefix
+            );
+        } else {
+            let normalized_prefix = strip_prefix
+                .trim_start_matches("options.")
+                .trim_end_matches('.')
+                .to_string();
+
+            let prefix_pattern = if normalized_prefix.is_empty() {
+                "options.".to_string()
+            } else {
+                format!("options.{}.", normalized_prefix)
+            };
+
+            log::debug!(
+                "Stripping prefix `{}` from the generated document",
+                prefix_pattern
+            );
+
+            filtered = filtered
+                .into_iter()
+                .map(|mut opt| {
+                    opt.name = opt.name.replace(&prefix_pattern, "");
+                    opt
+                })
+                .collect();
+        }
+    }
 
     // Filter by prefix
     if let Some(ref prefix) = cli.filter.filter_by_prefix {
