@@ -319,25 +319,44 @@ pub fn collect_options(
 
     // Collect all .nix files first
     let mut nix_files = Vec::new();
-    for entry in WalkDir::new(dir).follow_links(follow_symlinks).into_iter() {
-        let entry = entry?;
 
-        // Check if this path is in an excluded directory
+    // Filter function to check if a path should be excluded
+    let is_excluded = move |entry: &walkdir::DirEntry| -> bool {
+        let path = entry.path();
+
+        // Check if this path is an excluded directory
         let should_exclude = exclude_paths
+            .clone()
             .iter()
             .any(|excl| entry.path().starts_with(excl));
 
         if should_exclude {
-            log::debug!("Skipping excluded path: {}", entry.path().display());
+            log::debug!("Skipping excluded path: {}", path.display());
+            return true;
+        }
+
+        // Exclude hidden files and directories
+        is_hidden(entry)
+    };
+
+    for dir_entry in WalkDir::new(dir)
+        .follow_links(follow_symlinks)
+        .into_iter()
+        .filter_entry(|e| !is_excluded(e))
+    {
+        let entry = match dir_entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                log::warn!("An error occurred, skipping directory: {}", e);
+                continue;
+            }
+        };
+
+        // Only collect nix files
+        if !entry.file_type().is_file() || entry.path().extension().is_none_or(|ext| ext != "nix") {
             continue;
         }
 
-        if is_hidden(&entry)
-            || !entry.file_type().is_file()
-            || entry.path().extension().is_none_or(|ext| ext != "nix")
-        {
-            continue;
-        }
         nix_files.push(entry.path().to_path_buf());
     }
 
@@ -367,7 +386,17 @@ pub fn collect_options(
         match fs::read_to_string(&file_path) {
             Ok(content) => {
                 let parse = rnix::Root::parse(&content);
-                let relative_path = file_path.strip_prefix(dir)?.to_string_lossy().into_owned();
+                let relative_path = match file_path.strip_prefix(dir) {
+                    Ok(rel_path) => rel_path.to_string_lossy().into_owned(),
+                    Err(e) => {
+                        log::warn!(
+                            "Error getting relative path for {}: {}",
+                            file_path.display(),
+                            e
+                        );
+                        file_path.to_string_lossy().into_owned()
+                    }
+                };
 
                 parser::visit_node(
                     &parse.syntax(),
@@ -380,7 +409,8 @@ pub fn collect_options(
             }
             Err(e) => {
                 log::error!("Error reading file: {}", e);
-                return Err(NixDocError::Io(e));
+                log::warn!("Skipping file: {}", file_path.display());
+                continue;
             }
         }
     }
