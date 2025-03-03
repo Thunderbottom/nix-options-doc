@@ -97,18 +97,18 @@ Options:
   -p, --path <PATH>                Local path or remote git repository URL to the nix configuration [default: .]
   -o, --out <OUT>                  Path to the output file or 'stdout' [default: stdout]
   -f, --format <FORMAT>            Output format [default: markdown] [possible values: markdown, json, html, csv]
-  -s, --sort                       Whether the output names should be sorted
+  -s, --sort                       Whether the output should be sorted (asc.)
   -b, --branch <BRANCH>            Git branch or tag to use (if repository URL provided)
   -d, --depth <DEPTH>              Git commit depth (set to 1 for shallow clone) [default: 1]
-      --prefix <PREFIX>            Filter options by prefix (e.g. "services.nginx")
-      --replace <REPLACE>          Replace nix variable with the specified value in option paths (can be used multiple times) Format: --replace key=value
-      --search <SEARCH>            Search in option names and descriptions
-      --type-filter <TYPE_FILTER>  Filter options by type (e.g. "bool", "string")
+      --filter-by-prefix <PREFIX>  Filter options by prefix (e.g. "services.nginx")
+      --filter-by-type <NIX_TYPE>  Filter options by type (e.g. "bool", "string")
+      --search <OPTION>            Search in option names and descriptions
       --has-default                Only show options that have a default value
       --has-description            Only show options that have a description
+      --replace <KEY=VALUE>        Replace nix variables in the generated document with the specified value (can be used multiple times)
   -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
       --follow-symlinks            Enable traversing through symbolic links
-  -P, --progress                   Show progress bar
+      --progress                   Show progress bar
   -h, --help                       Print help
   -V, --version                    Print version
 ```
@@ -139,7 +139,6 @@ Example output:
 
 - Rust 1.70 or later
 - Git (for repository cloning features)
-- OpenSSL-dev and pkg-config
 
 ### Building
 
@@ -157,22 +156,6 @@ $ nix develop
 ```bash
 $ cargo test
 ```
-
-### Dependencies
-
-- clap: Command-line argument parsing
-- csv: CSV file generation
-- env_logger: Log configuration through environment variables
-- gix: Git repository handling
-- html-escape: HTML entity escaping
-- indicatif: Progress bar
-- log: Simple logging utility
-- rnix: Nix parser
-- serde_json: JSON serialization
-- serde: Serialization/deserialization
-- tempfile: Temporary directory management
-- thiserror: Error handling
-- walkdir: Directory traversal
 
 ## Contributing
 
