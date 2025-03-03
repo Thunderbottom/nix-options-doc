@@ -395,7 +395,10 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
     // Test non-existent path
     let non_existent = temp_dir.path().join("non-existent");
     let result = collect_options(&non_existent, &[], &HashMap::new(), false, false);
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "Non-existent paths should still return an error"
+    );
 
     // Create a file with invalid Nix syntax
     let invalid_content = r#"
@@ -408,9 +411,33 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
 "#;
     create_test_file(temp_dir.path(), "invalid.nix", invalid_content)?;
 
-    // The parser might handle syntax errors gracefully, so we'll
-    // just check that it doesn't panic
-    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false);
+    // File processing should continue even with parse errors
+    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
+    // Create a file with valid Nix syntax alongside the invalid one
+    let valid_content = r#"
+{
+  options.test.valid = {
+    enable = lib.mkEnableOption "Valid option";
+  };
+}
+"#;
+    create_test_file(temp_dir.path(), "valid.nix", valid_content)?;
+
+    // We should still find the valid option
+    // even when there's an invalid file in the same directory
+    let options_with_valid = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+    assert!(
+        !options_with_valid.is_empty(),
+        "Valid options should be found even when some files have errors"
+    );
+
+    // Test a file with read permission errors
+    let dir_with_nix_ext = temp_dir.path().join("not-readable.nix");
+    std::fs::create_dir(&dir_with_nix_ext)?;
+
+    // Should not error out even with the unreadable "file"
+    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
 
     Ok(())
 }
