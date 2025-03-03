@@ -106,6 +106,7 @@ Options:
       --has-default                Only show options that have a default value
       --has-description            Only show options that have a description
       --replace <KEY=VALUE>        Replace nix variables in the generated document with the specified value (can be used multiple times)
+      --strip-prefix [<PREFIX>]    Remove the specified prefix from generated documentation (must start with 'options.'), defaults to `option.` if no value is specified
   -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
       --follow-symlinks            Enable traversing through symbolic links
       --progress                   Show progress bar
