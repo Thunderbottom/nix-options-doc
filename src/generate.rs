@@ -9,7 +9,9 @@ use std::fmt::Write;
 ///
 /// # Returns
 /// A `Result` containing the generated Markdown string or an error.
-pub fn generate_markdown(options: &[OptionDoc]) -> Result<String, Box<dyn std::error::Error>> {
+pub fn generate_markdown(
+    options: &[OptionDoc],
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let mut output = String::with_capacity(options.len() * 100 + 200); // Pre-allocate approximate size
     output.push_str("# NixOS Module Options\n\n");
     output.push_str("| Option | Type | Default | Description |\n");

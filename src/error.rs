@@ -43,8 +43,8 @@ pub enum NixDocError {
 }
 
 // Implement From for Box<dyn std::error::Error>
-impl From<Box<dyn std::error::Error>> for NixDocError {
-    fn from(err: Box<dyn std::error::Error>) -> Self {
+impl From<Box<dyn std::error::Error + Send + Sync>> for NixDocError {
+    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
         NixDocError::StdError(err.to_string())
     }
 }

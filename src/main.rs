@@ -12,7 +12,7 @@ use std::io::Write;
 ///
 /// # Returns
 /// Returns `Ok(())` if the application completes successfully; otherwise returns an error.
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     env_logger::init();
     let cli = Cli::parse();
 

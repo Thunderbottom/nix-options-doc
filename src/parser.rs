@@ -19,11 +19,12 @@ use std::collections::HashMap;
 pub fn visit_node(
     node: &SyntaxNode,
     file_path: &str,
-    options: &mut Vec<OptionDoc>,
     prefix: &str,
     replacements: &HashMap<String, String>,
     source_text: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<OptionDoc>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut options = Vec::new();
+
     if node.kind() == SyntaxKind::NODE_ATTRPATH_VALUE {
         let key = node
             .children()
@@ -38,31 +39,26 @@ pub fn visit_node(
                 } else {
                     format!("{}.{}", prefix, key)
                 };
-                parse_attrset(
+                let mut nested_options = parse_attrset(
                     &value_node,
                     file_path,
-                    options,
                     &new_prefix,
                     replacements,
                     source_text,
                 )?;
+                options.append(&mut nested_options);
             }
         }
     } else {
         // Visit all children for other node types
         for child in node.children() {
-            visit_node(
-                &child,
-                file_path,
-                options,
-                prefix,
-                replacements,
-                source_text,
-            )?;
+            let mut child_options =
+                visit_node(&child, file_path, prefix, replacements, source_text)?;
+            options.append(&mut child_options);
         }
     }
 
-    Ok(())
+    Ok(options)
 }
 
 /// Parses an attribute path node and returns a dot-separated string representing the option name,
@@ -119,23 +115,19 @@ fn get_line_number(node: &SyntaxNode, source_text: &str) -> usize {
 fn parse_attrset(
     node: &SyntaxNode,
     file_path: &str,
-    options: &mut Vec<OptionDoc>,
     current_prefix: &str,
     replacements: &HashMap<String, String>,
     source_text: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Vec<OptionDoc>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut options = Vec::new();
+
     match node.kind() {
         // Nested attributes
         SyntaxKind::NODE_ATTR_SET => {
             for child in node.children() {
-                visit_node(
-                    &child,
-                    file_path,
-                    options,
-                    current_prefix,
-                    replacements,
-                    source_text,
-                )?;
+                let mut child_options =
+                    visit_node(&child, file_path, current_prefix, replacements, source_text)?;
+                options.append(&mut child_options);
             }
         }
         // Child node, parse for mkOption or mkEnableOption
@@ -166,7 +158,6 @@ fn parse_attrset(
                             apply_replacements(&desc_text, replacements)
                         });
 
-                    options.retain(|opt| opt.name != current_prefix);
                     options.push(OptionDoc {
                         name: current_prefix.to_string(),
                         description,
@@ -224,7 +215,6 @@ fn parse_attrset(
                         }
                     }
 
-                    options.retain(|opt| opt.name != current_prefix);
                     options.push(OptionDoc {
                         name: current_prefix.to_string(),
                         description,
@@ -240,5 +230,5 @@ fn parse_attrset(
         _ => {}
     }
 
-    Ok(())
+    Ok(options)
 }

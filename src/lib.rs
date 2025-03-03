@@ -7,6 +7,7 @@ pub mod utils;
 use crate::{error::NixDocError, types::NixType};
 use clap::{command, ArgGroup, Args, Parser};
 use gix::{progress::Discard, remote::fetch::Shallow};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -392,61 +393,84 @@ pub fn collect_options(
         nix_files.push(entry.path().to_path_buf());
     }
 
-    // Set up progress bar if requested, mostly pointless
-    // since Rust is quick enough to never see the progress,
-    // but you never know
+    // Set up progress bar
     let progress_bar = if show_progress {
-        Some(indicatif::ProgressBar::new(nix_files.len() as u64))
+        let pb = indicatif::ProgressBar::new(nix_files.len() as u64);
+        pb.set_style(
+            indicatif::ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+                )
+                .expect("Invalid progress bar template")
+                .progress_chars("#>-"),
+        );
+        Some(pb)
     } else {
         None
     };
 
-    let mut options = Vec::new();
+    // Use a thread-safe counter for progress
+    let counter = std::sync::atomic::AtomicUsize::new(0);
 
-    // Process files with progress reporting
-    for file_path in nix_files {
-        if let Some(ref pb) = progress_bar {
-            pb.inc(1);
-            if let Some(file_name) = file_path.file_name() {
-                pb.set_message(format!("Processing {}", file_name.to_string_lossy()));
+    // Process files in parallel
+    let options: Vec<OptionDoc> = nix_files
+        .par_iter()
+        .flat_map(|file_path| {
+            // Update progress
+            if let Some(ref pb) = progress_bar {
+                let count = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                pb.set_position(count as u64);
+                if let Some(file_name) = file_path.file_name() {
+                    pb.set_message(format!("Processing {}", file_name.to_string_lossy()));
+                }
             }
-        }
 
-        log::debug!(
-            "Processing file: {}",
-            file_path.strip_prefix(dir)?.to_string_lossy()
-        );
+            log::debug!(
+                "Processing file: {}",
+                match file_path.strip_prefix(dir) {
+                    Ok(rel) => rel.to_string_lossy(),
+                    Err(_) => file_path.to_string_lossy(),
+                }
+            );
 
-        let content = match fs::read_to_string(&file_path) {
-            Ok(content) => content,
-            Err(e) => {
-                log::error!("Error reading file {}: {}", file_path.display(), e);
-                continue;
+            // Read file and parse options
+            match fs::read_to_string(file_path) {
+                Ok(content) => {
+                    let parse = rnix::Root::parse(&content);
+                    let relative_path = match file_path.strip_prefix(dir) {
+                        Ok(rel_path) => rel_path.to_string_lossy().into_owned(),
+                        Err(e) => {
+                            log::warn!(
+                                "Error getting relative path for {}: {}",
+                                file_path.display(),
+                                e
+                            );
+                            file_path.to_string_lossy().into_owned()
+                        }
+                    };
+
+                    // Parse the file and get options
+                    match parser::visit_node(
+                        &parse.syntax(),
+                        &relative_path,
+                        "",
+                        replacements,
+                        &content,
+                    ) {
+                        Ok(file_options) => file_options,
+                        Err(e) => {
+                            log::error!("Error parsing file {}: {}", file_path.display(), e);
+                            Vec::new()
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error reading file {}: {}", file_path.display(), e);
+                    Vec::new()
+                }
             }
-        };
-
-        let parse = rnix::Root::parse(&content);
-        let relative_path = file_path
-            .strip_prefix(dir)
-            .map(|rel_path| rel_path.to_string_lossy().into_owned())
-            .unwrap_or_else(|e| {
-                log::warn!(
-                    "Error getting relative path for {}: {}",
-                    file_path.display(),
-                    e
-                );
-                file_path.to_string_lossy().into_owned()
-            });
-
-        parser::visit_node(
-            &parse.syntax(),
-            &relative_path,
-            &mut options,
-            "",
-            replacements,
-            &content,
-        )?;
-    }
+        })
+        .collect();
 
     if let Some(pb) = progress_bar {
         pb.finish_with_message("Processing complete");
@@ -454,7 +478,18 @@ pub fn collect_options(
 
     log::debug!("Total options found: {}", options.len());
 
-    Ok(options)
+    // Post-process: Deduplicate options
+    let mut unique_options = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
+
+    for option in options {
+        if !seen_names.contains(&option.name) {
+            seen_names.insert(option.name.clone());
+            unique_options.push(option);
+        }
+    }
+
+    Ok(unique_options)
 }
 
 // Check if the directory is a hidden directory.

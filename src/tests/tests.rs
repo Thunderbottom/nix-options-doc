@@ -22,7 +22,7 @@ fn create_test_file(dir: &Path, filename: &str, content: &str) -> Result<(), std
 /// Creates a temporary file with a simple option definition and asserts that the parsed option’s
 /// name, type, description, and default value match expectations.
 #[test]
-fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
+fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
     let content = r#"
 {
@@ -49,7 +49,7 @@ fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
 /// Tests parsing of complex options including nested attributes.
 /// Verifies that string and numeric options are correctly parsed from a Nix file.
 #[test]
-fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
+fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
     let content = r#"
 {
@@ -97,7 +97,7 @@ fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error>> {
 /// Tests the generation of Markdown documentation from a set of option definitions.
 /// Checks that the resulting Markdown output contains expected table entries and links.
 #[test]
-fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error>> {
+fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let options = vec![
         OptionDoc {
             name: "options.test.opt1".to_string(),
@@ -137,7 +137,7 @@ fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Tests that hidden files (e.g. files starting with a dot) are correctly excluded from processing.
 #[test]
-fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error>> {
+fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
     let content = r#"
 {
@@ -156,7 +156,7 @@ fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Tests the parsing of multi-line description in option definition.
 #[test]
-fn test_multiline_description_parsing() -> Result<(), Box<dyn std::error::Error>> {
+fn test_multiline_description_parsing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
     let content = r#"
 {
@@ -233,7 +233,7 @@ fn test_cli_args() {
 
 /// Tests that duplicate option definitions are prevented by ensuring only one instance is kept.
 #[test]
-fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error>> {
+fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
     let content = r#"
 {
@@ -262,7 +262,7 @@ fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Tests that options in excluded directories are not included in the final results.
 #[test]
-fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error>> {
+fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
 
     // Create a structure with files in subdirectories
@@ -325,7 +325,7 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error>> {
 /// Tests variable replacement functionality in option names and descriptions.
 /// Verifies that placeholders (e.g. `${namespace}`) are replaced with provided values.
 #[test]
-fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error>> {
+fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
 
     // Create a file with variable interpolation
@@ -389,7 +389,7 @@ fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Tests error handling by checking that invalid paths and malformed files produce proper errors without panicking.
 #[test]
-fn test_error_handling() -> Result<(), Box<dyn std::error::Error>> {
+fn test_error_handling() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
 
     // Test non-existent path
