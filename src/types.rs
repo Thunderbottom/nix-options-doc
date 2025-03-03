@@ -79,8 +79,15 @@ impl fmt::Display for NixType {
                 if types.is_empty() {
                     write!(f, "either")
                 } else {
-                    let type_strings: Vec<String> = types.iter().map(|t| t.to_string()).collect();
-                    write!(f, "either: [{}]", type_strings.join(", "))
+                    write!(
+                        f,
+                        "either: [{}]",
+                        types
+                            .iter()
+                            .map(|t| t.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
             }
             NixType::Unknown(s) => write!(f, "{}", s),

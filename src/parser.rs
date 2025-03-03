@@ -75,11 +75,10 @@ pub fn visit_node(
 /// # Returns
 /// A dot-separated string that represents the full option name.
 fn parse_attrpath(node: &SyntaxNode, replacements: &HashMap<String, String>) -> String {
-    let mut path = Vec::new();
-    for child in node.children() {
-        path.push(apply_replacements(&child.text().to_string(), replacements));
-    }
-    path.join(".")
+    node.children()
+        .map(|child| apply_replacements(&child.text().to_string(), replacements))
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// Determines the 1-based line number where a syntax node starts in the source file.

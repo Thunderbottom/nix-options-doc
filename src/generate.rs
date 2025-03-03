@@ -1,5 +1,6 @@
 use crate::error::NixDocError;
 use crate::OptionDoc;
+use std::fmt::Write;
 
 /// Generates a Markdown formatted string documenting NixOS module options.
 ///
@@ -9,41 +10,40 @@ use crate::OptionDoc;
 /// # Returns
 /// A `Result` containing the generated Markdown string or an error.
 pub fn generate_markdown(options: &[OptionDoc]) -> Result<String, Box<dyn std::error::Error>> {
-    let mut output = String::from("# NixOS Module Options\n\n");
-
-    // Set markdown table headers
+    let mut output = String::with_capacity(options.len() * 100 + 200); // Pre-allocate approximate size
+    output.push_str("# NixOS Module Options\n\n");
     output.push_str("| Option | Type | Default | Description |\n");
     output.push_str("|--------|------|---------|-------------|\n");
 
-    // Sort options by name for better readability
-    let nix_options = options.to_vec();
-
-    for option in nix_options {
-        // Escape any pipe characters in the fields to avoid breaking table formatting
+    for option in options {
+        // Escape pipe characters in fields
         let name = option.name.replace('|', "\\|");
         let file_path = option.file_path.replace('|', "\\|");
         let type_info = option.nix_type.to_string().replace('|', "\\|");
         let default = option
             .default_value
+            .as_deref()
             .map(|v| v.replace('|', "\\|"))
             .unwrap_or_else(|| "-".to_string());
         let description = option
             .description
+            .as_deref()
             .map(|d| d.replace('|', "\\|"))
             .unwrap_or_else(|| "-".to_string());
 
-        output.push_str(&format!(
-            "| [`{}`]({}#L{}) | `{}` | `{}` | {} |\n",
+        writeln!(
+            output,
+            "| [`{}`]({}#L{}) | `{}` | `{}` | {} |",
             name, file_path, option.line_number, type_info, default, description
-        ));
+        )?;
     }
 
-    // Add a note about the source files
-    output.push_str(&format!(
-        "\n\n*Generated with [{}]({})*\n",
+    writeln!(
+        output,
+        "\n\n*Generated with [{}]({})*",
         env!("CARGO_PKG_NAME"),
         option_env!("CARGO_PKG_REPOSITORY").unwrap_or(env!("CARGO_PKG_NAME"))
-    ));
+    )?;
 
     Ok(output)
 }

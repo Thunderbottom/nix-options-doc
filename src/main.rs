@@ -44,7 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let filtered_options = filter_options(&options, &cli);
 
     if filtered_options.is_empty() {
-        log::warn!("No options match the specified filters");
+        log::warn!(
+            "No options match the specified filters (from {} total options)",
+            options.len()
+        );
         return Ok(());
     }
 

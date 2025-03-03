@@ -211,7 +211,7 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     }
 
     // Strip prefix: `options.*`
-    if let Some(ref strip_prefix) = cli.filter.strip_prefix {
+    if let Some(strip_prefix) = &cli.filter.strip_prefix {
         let prefix = if strip_prefix.is_empty() {
             "options.".to_string()
         } else if strip_prefix.starts_with("options.") {
@@ -226,13 +226,9 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
 
         log::debug!("Stripping prefix `{}` from the generated document", prefix);
 
-        filtered = filtered
-            .into_iter()
-            .map(|mut opt| {
-                opt.name = opt.name.replace(&prefix, "");
-                opt
-            })
-            .collect();
+        for opt in &mut filtered {
+            opt.name = opt.name.replace(&prefix, "");
+        }
     }
 
     filtered
@@ -421,36 +417,35 @@ pub fn collect_options(
             file_path.strip_prefix(dir)?.to_string_lossy()
         );
 
-        match fs::read_to_string(&file_path) {
-            Ok(content) => {
-                let parse = rnix::Root::parse(&content);
-                let relative_path = match file_path.strip_prefix(dir) {
-                    Ok(rel_path) => rel_path.to_string_lossy().into_owned(),
-                    Err(e) => {
-                        log::warn!(
-                            "Error getting relative path for {}: {}",
-                            file_path.display(),
-                            e
-                        );
-                        file_path.to_string_lossy().into_owned()
-                    }
-                };
-
-                parser::visit_node(
-                    &parse.syntax(),
-                    &relative_path,
-                    &mut options,
-                    "",
-                    replacements,
-                    &content,
-                )?;
-            }
+        let content = match fs::read_to_string(&file_path) {
+            Ok(content) => content,
             Err(e) => {
-                log::error!("Error reading file: {}", e);
-                log::warn!("Skipping file: {}", file_path.display());
+                log::error!("Error reading file {}: {}", file_path.display(), e);
                 continue;
             }
-        }
+        };
+
+        let parse = rnix::Root::parse(&content);
+        let relative_path = file_path
+            .strip_prefix(dir)
+            .map(|rel_path| rel_path.to_string_lossy().into_owned())
+            .unwrap_or_else(|e| {
+                log::warn!(
+                    "Error getting relative path for {}: {}",
+                    file_path.display(),
+                    e
+                );
+                file_path.to_string_lossy().into_owned()
+            });
+
+        parser::visit_node(
+            &parse.syntax(),
+            &relative_path,
+            &mut options,
+            "",
+            replacements,
+            &content,
+        )?;
     }
 
     if let Some(pb) = progress_bar {
@@ -464,11 +459,7 @@ pub fn collect_options(
 
 // Check if the directory is a hidden directory.
 fn is_hidden(entry: &walkdir::DirEntry) -> bool {
-    entry
-        .file_name()
-        .to_str()
-        .map(|s| s.starts_with('.'))
-        .unwrap_or(false)
+    entry.file_name().to_string_lossy().starts_with('.')
 }
 
 /// Generates documentation for the given options in the specified output format.
