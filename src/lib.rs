@@ -327,7 +327,12 @@ pub fn collect_options(
     show_progress: bool,
     follow_symlinks: bool,
 ) -> Result<Vec<OptionDoc>, NixDocError> {
-    let mut options = Vec::new();
+    if !dir.exists() {
+        return Err(NixDocError::InvalidPath(format!(
+            "Directory does not exist: {}",
+            dir.display()
+        )));
+    }
 
     if !replacements.is_empty() {
         log::debug!("Using variable replacements:");
@@ -361,30 +366,26 @@ pub fn collect_options(
     let mut nix_files = Vec::new();
 
     // Filter function to check if a path should be excluded
-    let is_excluded = move |entry: &walkdir::DirEntry| -> bool {
-        let path = entry.path();
-
-        // Check if this path is an excluded directory
-        let should_exclude = exclude_paths
-            .clone()
+    let is_excluded = |entry: &walkdir::DirEntry| {
+        if exclude_paths
             .iter()
-            .any(|excl| entry.path().starts_with(excl));
-
-        if should_exclude {
-            log::debug!("Skipping excluded path: {}", path.display());
-            return true;
+            .any(|excl| entry.path().starts_with(excl))
+        {
+            log::debug!("Skipping excluded path: {}", entry.path().display());
+            true
+        } else {
+            false
         }
-
-        // Exclude hidden files and directories
-        is_hidden(entry)
     };
 
-    for dir_entry in WalkDir::new(dir)
+    // Walk the directory, filtering out excluded paths
+    for result in WalkDir::new(dir)
         .follow_links(follow_symlinks)
         .into_iter()
         .filter_entry(|e| !is_excluded(e))
     {
-        let entry = match dir_entry {
+        // Handle any errors during directory traversal
+        let entry = match result {
             Ok(entry) => entry,
             Err(e) => {
                 log::warn!("An error occurred, skipping directory: {}", e);
@@ -392,8 +393,11 @@ pub fn collect_options(
             }
         };
 
-        // Only collect nix files
-        if !entry.file_type().is_file() || entry.path().extension().is_none_or(|ext| ext != "nix") {
+        // Skip hidden files, non-files, and non-nix files
+        if is_hidden(&entry)
+            || !entry.file_type().is_file()
+            || entry.path().extension().is_none_or(|ext| ext != "nix")
+        {
             continue;
         }
 
@@ -408,6 +412,8 @@ pub fn collect_options(
     } else {
         None
     };
+
+    let mut options = Vec::new();
 
     // Process files with progress reporting
     for file_path in nix_files {
