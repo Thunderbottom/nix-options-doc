@@ -1,30 +1,31 @@
 <h1 align="center">nix-options-doc</h1>
 
-A command-line tool that generates multi-format Nix modules documentation.
+A command-line tool that generates comprehensive, multi-format documentation for NixOS module options.
 
-A live version of the generated documentation can be found at: [Thunderbottom/flakes](https://github.com/Thunderbottom/flakes/blob/main/options.md)
+A live example of the generated documentation can be found at: [Thunderbottom/flakes](https://github.com/Thunderbottom/flakes/blob/main/options.md)
 
 ## Why?
 
-I was always fascinated by various Nix projects that showcased their Nix module documentation, yet I failed to find any tool to do so for my own projects. And so I wrote one. This has also served me as an exercise in learning Rust.
+NixOS configurations can be complex, with numerous modules and options that need clear documentation. While many Nix projects showcase elegant module documentation, I couldn't find a dedicated tool to generate such documentation for my own projects. This tool fills that gap, while also serving as my exercise in learning Rust.
 
 ## Features
 
-- Recursively scans directories for `.nix` files (with directory exclusion support)
-- Supports both local paths and remote Git repositories (with branch/tag selection)
-- Extracts option names, types, default values, descriptions, and line numbers
-- Handles variable interpolation (e.g., `${namespace}`) with configurable replacements
-- Robust error handling with detailed error messages
-- Multiple output formats (Markdown, JSON, HTML, CSV)
-- Line numbers in file references for direct linking
-- Optional alphabetical sorting of options
-- Links file paths in generated documentation for easy reference
+- **Multiple Output Formats**: Generate documentation in Markdown, HTML, JSON, or CSV
+- **Rich Documentation**: Captures option names, types, default values, examples, descriptions, and source references
+- **Improved Type Detection**: Intelligent parsing of complex Nix types with human-friendly output
+- **Repository Support**: Works with both local paths and remote Git repositories (with branch/tag selection)
+- **Variable Interpolation**: Handles `${namespace}` style variables with configurable replacements
+- **Admonition Support**: Renders warning, note, and important blocks in both Markdown and HTML output
+- **Filtering Capabilities**: Filter by prefix, type, search term, or other criteria
+- **Robust Error Handling**: Detailed error messages and graceful recovery from parsing issues
+- **Parallel Processing**: Fast performance with multi-threaded file processing
+- **Progress Visibility**: Optional progress bar for monitoring documentation generation
 
 ## Installation
 
 ### Pre-built Binary
 
-Pre-built binaries for ARM and x86 based GNU/Linux systems are available under [releases](/releases).
+Pre-built binaries for ARM and x86 based GNU/Linux systems are available under [releases](https://github.com/Thunderbottom/nix-options-doc/releases).
 
 ### Using Cargo
 
@@ -44,7 +45,7 @@ $ cargo build --release
 
 ```bash
 $ nix build github:Thunderbottom/nix-options-doc
-$ ./results/bin/nix-options-doc --path /etc/nixos --out stdout  
+$ ./result/bin/nix-options-doc --path /etc/nixos --out nixos-options.md
 ```
 
 ## Usage
@@ -52,40 +53,52 @@ $ ./results/bin/nix-options-doc --path /etc/nixos --out stdout
 ### Basic Usage
 
 ```bash
-# Generate documentation for current directory
-# Prints the generated documentation to stdout
+# Generate documentation for current directory, output to stdout
 $ nix-options-doc
 
 # Generate documentation for a specific path
-$ nix-options-doc --path ./nixos/modules
+$ nix-options-doc --path ./nixos/modules --out modules-doc.md
 
 # Generate sorted documentation
 $ nix-options-doc --path ./nixos/modules --sort
 
-# Output to stdout instead of file
-$ nix-options-doc --out stdout
+# Generate HTML documentation
+$ nix-options-doc --format html --out modules.html
+
+# Show progress bar during generation
+$ nix-options-doc --progress
+```
+
+### Advanced Usage
+
+```bash
+# Filter options by prefix
+$ nix-options-doc --filter-by-prefix services.nginx
 
 # Exclude specific directories
 $ nix-options-doc --exclude-dir templates,tests
 
-# Replace variables like ${namespace} in paths
+# Replace variables in Nix modules
 $ nix-options-doc --replace namespace=snowflake --replace system=x86_64-linux
+
+# Only include options with descriptions
+$ nix-options-doc --has-description
+
+# Strip common prefix from option names
+$ nix-options-doc --strip-prefix options.services
 ```
 
 ### Working with Git Repositories
 
-The tool supports all Git URL formats:
-
 ```bash
-# GitHub HTTPS
+# Clone and document a GitHub repository (HTTPS)
 $ nix-options-doc --path https://github.com/user/repo.git
 
-# GitHub SSH
-$ nix-options-doc --path git@github.com:user/repo.git
+# Use specific branch or tag
+$ nix-options-doc --path git@github.com:user/repo.git --branch feature-branch
 
-# Other Git URLs
-$ nix-options-doc --path git://example.com/repo.git
-$ nix-options-doc --path ssh://git@example.com/repo.git
+# Shallow clone with custom depth
+$ nix-options-doc --path git://example.com/repo.git --depth 5
 ```
 
 ### Command Line Options
@@ -94,45 +107,69 @@ $ nix-options-doc --path ssh://git@example.com/repo.git
 Usage: nix-options-doc [OPTIONS]
 
 Options:
-  -p, --path <PATH>                Local path or remote git repository URL to the nix configuration [default: .]
-  -o, --out <OUT>                  Path to the output file or 'stdout' [default: stdout]
+  -p, --path <PATH>                Local path or remote git repository URL [default: .]
+  -o, --out <OUT>                  Path to output file or 'stdout' [default: stdout]
   -f, --format <FORMAT>            Output format [default: markdown] [possible values: markdown, json, html, csv]
-  -s, --sort                       Whether the output should be sorted (asc.)
-  -b, --branch <BRANCH>            Git branch or tag to use (if repository URL provided)
-  -d, --depth <DEPTH>              Git commit depth (set to 1 for shallow clone) [default: 1]
+  -s, --sort                       Sort options alphabetically
+  -b, --branch <BRANCH>            Git branch or tag to use (for remote repositories)
+  -d, --depth <DEPTH>              Git commit depth for shallow clones [default: 1]
       --filter-by-prefix <PREFIX>  Filter options by prefix (e.g. "services.nginx")
       --filter-by-type <NIX_TYPE>  Filter options by type (e.g. "bool", "string")
       --search <OPTION>            Search in option names and descriptions
       --has-default                Only show options that have a default value
       --has-description            Only show options that have a description
-      --replace <KEY=VALUE>        Replace nix variables in the generated document with the specified value (can be used multiple times)
-      --strip-prefix [<PREFIX>]    Remove the specified prefix from generated documentation (must start with 'options.'), defaults to `option.` if no value is specified
-  -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing (can be specified multiple times)
+      --replace <KEY=VALUE>        Replace variables in Nix modules (can be used multiple times)
+      --strip-prefix [<PREFIX>]    Remove the specified prefix from output [default: options.]
+  -e, --exclude-dir <EXCLUDE_DIR>  Directories to exclude from processing
       --follow-symlinks            Enable traversing through symbolic links
       --progress                   Show progress bar
   -h, --help                       Print help
   -V, --version                    Print version
 ```
 
-## Output Format
+## Output Examples
 
-The generated documentation includes a Markdown table with the following columns:
+### Markdown Format
 
-| Column | Description |
-|--------|-------------|
-| Option | The full option definition path |
-| Type | The option's type (e.g., boolean, string, etc.) |
-| Default | The default value, if any |
-| Description | Documentation for the option |
-
-Example output:
+The Markdown output uses a heading-based structure for each option:
 
 ```markdown
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| [services.nginx.enable](modules/nginx/default.nix#L25) | boolean | `false` | Whether to enable nginx |
-| [services.nginx.port](modules/nginx/default.nix#L32) | number | `80` | Port to listen on |
+## [`services.nginx.enable`](modules/nginx/default.nix#L25)
+
+Whether to enable the Nginx web server.
+
+**Type:** `boolean`
+
+**Default:** `false`
+
+**Example:** `true`
 ```
+
+### Admonition Support
+
+The tool properly renders admonition blocks in Nix module descriptions:
+
+```nix
+# In your Nix file:
+description = ''
+  Regular description text.
+  
+  ::: {.warning}
+  This setting can impact system security.
+  :::
+'';
+```
+
+Will be rendered in Markdown as:
+
+```markdown
+Regular description text.
+
+> [!WARNING]  
+> This setting can impact system security.
+```
+
+And in HTML with proper styling.
 
 ## Development
 
@@ -141,26 +178,32 @@ Example output:
 - Rust 1.70 or later
 - Git (for repository cloning features)
 
-### Building
+### Building and Testing
 
 ```bash
-# Using Cargo
+# Build the project
 $ cargo build
 
-# Using nix develop
-$ nix develop
-(nix shell) $ cargo build --reelease
-```
-
-### Running Tests
-
-```bash
+# Run tests
 $ cargo test
+
+# Run with debug logging
+$ RUST_LOG=debug cargo run -- --path /path/to/nixos/modules
 ```
+
+### Project Structure
+
+- `src/generate/` - Output format generators (Markdown, HTML, JSON, CSV)
+- `src/parser.rs` - Nix file parser using rnix syntax tree
+- `src/types.rs` - NixOS type definitions and formatting
+- `src/utils.rs` - Helper functions for file processing and text manipulation
+- `src/error.rs` - Error type definitions and handling
+- `src/lib.rs` - Core functions and CLI structure
+- `src/main.rs` - Command-line interface
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Feel free to submit a Pull Request or open an issue.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/AmazingFeature`)

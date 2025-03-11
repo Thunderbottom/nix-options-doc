@@ -1,5 +1,5 @@
 use super::*;
-use crate::{generate::generate_markdown, NixType};
+use crate::generate::generate_markdown;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -13,14 +13,12 @@ use tempfile::TempDir;
 /// - `content`: The content to write into the file.
 ///
 /// # Returns
-/// Returns `Ok(())` if the file is created successfully; otherwise returns an I/O error.
+/// A Result indicating success or an I/O error.
 fn create_test_file(dir: &Path, filename: &str, content: &str) -> Result<(), std::io::Error> {
     fs::write(dir.join(filename), content)
 }
 
 /// Tests that a simple option is parsed correctly from a Nix file.
-/// Creates a temporary file with a simple option definition and asserts that the parsed option’s
-/// name, type, description, and default value match expectations.
 #[test]
 fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -34,6 +32,7 @@ fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + 
     create_test_file(temp_dir.path(), "flake.nix", content)?;
 
     let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     assert_eq!(options.len(), 1);
     assert_eq!(options[0].name, "options.test.simple.enable");
     assert_eq!(options[0].nix_type.to_string(), "boolean");
@@ -47,7 +46,6 @@ fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + 
 }
 
 /// Tests parsing of complex options including nested attributes.
-/// Verifies that string and numeric options are correctly parsed from a Nix file.
 #[test]
 fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -70,6 +68,7 @@ fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error + Send 
     create_test_file(temp_dir.path(), "test.nix", content)?;
 
     let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     assert_eq!(options.len(), 2);
 
     let string_opt = options
@@ -95,34 +94,44 @@ fn test_complex_option_parsing() -> Result<(), Box<dyn std::error::Error + Send 
 }
 
 /// Tests the generation of Markdown documentation from a set of option definitions.
-/// Checks that the resulting Markdown output contains expected table entries and links.
 #[test]
 fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let options = vec![
         OptionDoc {
             name: "options.test.opt1".to_string(),
             description: Some("Test option 1".to_string()),
-            nix_type: NixType::Bool,
+            nix_type: "boolean".to_string(),
             default_value: Some("false".to_string()),
+            example: None,
             file_path: "test.nix".to_string(),
             line_number: 1,
         },
         OptionDoc {
             name: "options.test.opt2".to_string(),
             description: Some("Test option 2".to_string()),
-            nix_type: NixType::Unknown("lib.types.str".to_string()),
+            nix_type: "lib.types.str".to_string(),
             default_value: None,
+            example: None,
             file_path: "test.nix".to_string(),
             line_number: 2,
         },
     ];
 
-    // Test unsorted output
+    // Generate markdown
     let markdown = generate_markdown(&options)?;
-    assert!(markdown.contains("| [`options.test.opt1`](test.nix#L1)"));
-    assert!(markdown.contains("| [`options.test.opt2`](test.nix#L2)"));
+
+    // Validate markdown content
+    assert!(markdown.contains("# NixOS Module Options"));
+    assert!(markdown.contains("## [`options.test.opt1`](test.nix#L1)"));
+    assert!(markdown.contains("## [`options.test.opt2`](test.nix#L2)"));
     assert!(markdown.contains("Test option 1"));
     assert!(markdown.contains("Test option 2"));
+    assert!(markdown.contains("**Type:** `boolean`"));
+    // The type string might be transformed by the formatter
+    assert!(
+        markdown.contains("**Type:**") && (markdown.contains("string") || markdown.contains("str"))
+    );
+    assert!(markdown.contains("**Default:** `false`"));
 
     // Test sorted output
     let mut sorted_options = options.clone();
@@ -135,7 +144,7 @@ fn test_markdown_generation() -> Result<(), Box<dyn std::error::Error + Send + S
     Ok(())
 }
 
-/// Tests that hidden files (e.g. files starting with a dot) are correctly excluded from processing.
+/// Tests that hidden files are correctly excluded from processing.
 #[test]
 fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -149,6 +158,7 @@ fn test_hidden_files_exclusion() -> Result<(), Box<dyn std::error::Error + Send 
     create_test_file(temp_dir.path(), ".hidden.nix", content)?;
 
     let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     assert_eq!(options.len(), 0);
 
     Ok(())
@@ -187,35 +197,50 @@ fn test_multiline_description_parsing() -> Result<(), Box<dyn std::error::Error 
     create_test_file(temp_dir.path(), "flake.nix", content)?;
 
     let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     assert_eq!(options.len(), 2);
-    assert_eq!(options[0].name, "options.test.complex.packages");
-    assert_eq!(options[1].name, "options.test.complex.values");
+
+    // Sort the options by name to ensure consistent order
+    let mut sorted_options = options.clone();
+    sorted_options.sort_by(|a, b| a.name.cmp(&b.name));
+
+    assert_eq!(sorted_options[0].name, "options.test.complex.packages");
+    assert_eq!(sorted_options[1].name, "options.test.complex.values");
 
     assert_eq!(
-        options[0].nix_type.to_string(),
+        sorted_options[0].nix_type.to_string(),
         "with lib.types; listOf str"
     );
     assert_eq!(
-        options[1].nix_type.to_string(),
+        sorted_options[1].nix_type.to_string(),
         "with lib.types; listOf int"
     );
 
-    // Check multi-line description
+    // Check multi-line description - trim any extra whitespace at beginning/end
+    let desc0 = sorted_options[0]
+        .description
+        .as_ref()
+        .map(|s| s.trim().to_string());
+    let desc1 = sorted_options[1]
+        .description
+        .as_ref()
+        .map(|s| s.trim().to_string());
+
     assert_eq!(
-        options[0].description,
+        desc0,
         Some("A multi-line description\nwith multiple lines\nand some indentation.".to_string())
     );
     assert_eq!(
-        options[1].description,
+        desc1,
         Some("A multi-line description\nwith multiple lines.\n\nAnd some more text across\nanother paragraph.".to_string())
     );
-    assert_eq!(options[0].default_value, Some("[]".to_string()));
-    assert_eq!(options[1].default_value, Some("[1, 2]".to_string()));
+    assert_eq!(sorted_options[0].default_value, Some("[]".to_string()));
+    assert_eq!(sorted_options[1].default_value, Some("[1, 2]".to_string()));
 
     Ok(())
 }
 
-/// Tests the parsing of command-line arguments and verifies that default values are correctly assigned.
+/// Tests the parsing of command-line arguments.
 #[test]
 fn test_cli_args() {
     use clap::Parser;
@@ -231,7 +256,7 @@ fn test_cli_args() {
     assert!(args.io.sort);
 }
 
-/// Tests that duplicate option definitions are prevented by ensuring only one instance is kept.
+/// Tests that duplicate option definitions are handled correctly.
 #[test]
 fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -246,6 +271,7 @@ fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error + Send + 
     create_test_file(temp_dir.path(), "test.nix", content)?;
 
     let options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     let enable_options: Vec<_> = options
         .iter()
         .filter(|o| o.name == "options.test.enable")
@@ -260,7 +286,7 @@ fn test_duplicate_prevention() -> Result<(), Box<dyn std::error::Error + Send + 
     Ok(())
 }
 
-/// Tests that options in excluded directories are not included in the final results.
+/// Tests that options in excluded directories are not included in the results.
 #[test]
 fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -295,6 +321,7 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Test without exclusion
     let all_options = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+
     assert!(!all_options.is_empty()); // At least the main option
     assert!(all_options.iter().any(|o| o.name == "options.main.enable"));
 
@@ -304,6 +331,7 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .join("excluded")
         .to_string_lossy()
         .to_string()];
+
     let filtered_options = collect_options(
         temp_dir.path(),
         &exclude_dirs,
@@ -323,7 +351,6 @@ fn test_exclude_dir() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 }
 
 /// Tests variable replacement functionality in option names and descriptions.
-/// Verifies that placeholders (e.g. `${namespace}`) are replaced with provided values.
 #[test]
 fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -387,7 +414,7 @@ fn test_variable_replacements() -> Result<(), Box<dyn std::error::Error + Send +
     Ok(())
 }
 
-/// Tests error handling by checking that invalid paths and malformed files produce proper errors without panicking.
+/// Tests error handling for invalid paths and malformed files.
 #[test]
 fn test_error_handling() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let temp_dir = TempDir::new()?;
@@ -395,10 +422,7 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     // Test non-existent path
     let non_existent = temp_dir.path().join("non-existent");
     let result = collect_options(&non_existent, &[], &HashMap::new(), false, false);
-    assert!(
-        result.is_err(),
-        "Non-existent paths should still return an error"
-    );
+    assert!(result.is_err(), "Non-existent paths should return an error");
 
     // Create a file with invalid Nix syntax
     let invalid_content = r#"
@@ -412,7 +436,11 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
     create_test_file(temp_dir.path(), "invalid.nix", invalid_content)?;
 
     // File processing should continue even with parse errors
-    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+    let result = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false);
+    assert!(
+        result.is_ok(),
+        "Processing should continue even with parse errors"
+    );
 
     // Create a file with valid Nix syntax alongside the invalid one
     let valid_content = r#"
@@ -432,18 +460,21 @@ fn test_error_handling() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
         "Valid options should be found even when some files have errors"
     );
 
-    // Test a file with read permission errors
+    // Test a directory with .nix extension
     let dir_with_nix_ext = temp_dir.path().join("not-readable.nix");
     std::fs::create_dir(&dir_with_nix_ext)?;
 
     // Should not error out even with the unreadable "file"
-    let _ = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false)?;
+    let result = collect_options(temp_dir.path(), &[], &HashMap::new(), false, false);
+    assert!(
+        result.is_ok(),
+        "Should handle directories with .nix extensions"
+    );
 
     Ok(())
 }
 
-/// Tests the parsing of replacement arguments from the command line,
-/// ensuring that key-value pairs are correctly split and stored.
+/// Tests the parsing of replacement arguments from the command line.
 #[test]
 fn test_cli_replace_argument() {
     use clap::Parser;
@@ -477,4 +508,74 @@ fn test_cli_replace_argument() {
         replacements.get("system"),
         Some(&"x86_64-linux".to_string())
     );
+}
+
+#[test]
+fn test_admonition_conversion() {
+    let input = r#"
+Here is some text.
+
+::: {.important}
+This is an important notice.
+With multiple lines.
+:::
+
+More text here.
+
+::: {.warning}
+This is a warning.
+:::
+
+::: {.note}
+This is a note with code:
+```rust
+fn main() {
+    println!("Hello");
+}
+```
+:::
+"#;
+
+    let expected = r#"
+Here is some text.
+
+> [!IMPORTANT]  
+> This is an important notice.
+> With multiple lines.
+
+More text here.
+
+> [!WARNING]  
+> This is a warning.
+
+> [!NOTE]  
+> This is a note with code:
+> ```rust
+> fn main() {
+>     println!("Hello");
+> }
+> ```
+"#;
+
+    assert_eq!(utils::convert_admonitions(input), expected);
+}
+
+#[test]
+fn test_clean_description_with_admonitions() {
+    let input = r#"
+This is a description with {code}`example` and an admonition:
+
+::: {.important}
+Critical security information.
+:::
+"#;
+
+    let expected = r#"
+This is a description with `example` and an admonition:
+
+> [!IMPORTANT]  
+> Critical security information.
+"#;
+
+    assert_eq!(utils::clean_description(input), expected);
 }

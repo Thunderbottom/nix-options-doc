@@ -11,7 +11,7 @@ use std::io::Write;
 /// generates documentation in the desired format, and outputs the result to stdout or a file.
 ///
 /// # Returns
-/// Returns `Ok(())` if the application completes successfully; otherwise returns an error.
+/// Returns `Ok(())` if the application completes successfully; otherwise returns an error with details.
 fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     env_logger::init();
     let cli = Cli::parse();

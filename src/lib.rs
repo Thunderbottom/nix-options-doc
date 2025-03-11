@@ -1,17 +1,15 @@
 pub mod error;
 pub mod generate;
 pub mod parser;
-pub mod types;
 pub mod utils;
 
-use crate::{error::NixDocError, types::NixType};
+use crate::error::NixDocError;
 use clap::{command, ArgGroup, Args, Parser};
 use gix::{progress::Discard, remote::fetch::Shallow};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
 };
 use tempfile::TempDir;
@@ -30,6 +28,9 @@ pub enum OutputFormat {
     Csv,
 }
 
+/// Command-line interface configuration and options.
+///
+/// Contains all command-line arguments grouped by functionality.
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 pub struct Cli {
@@ -46,7 +47,9 @@ pub struct Cli {
     pub util: UtilityOptions,
 }
 
-/// IO Command Options
+/// Input/output related command options.
+///
+/// Controls where to read Nix files from and how to output documentation.
 #[derive(Args)]
 #[command(group(ArgGroup::new("io")))]
 pub struct IoOptions {
@@ -65,9 +68,15 @@ pub struct IoOptions {
     /// Whether the output should be sorted (asc.)
     #[arg(short, long)]
     pub sort: bool,
+
+    /// Prefix path or URL for the output options
+    #[arg(long, value_name = "PATH")]
+    pub out_prefix: Option<String>,
 }
 
-/// Git Options
+/// Git repository related command options.
+///
+/// Controls how to fetch and use Git repositories.
 #[derive(Args)]
 #[command(group(ArgGroup::new("git")))]
 pub struct GitOptions {
@@ -80,7 +89,9 @@ pub struct GitOptions {
     pub depth: u32,
 }
 
-/// Filter Options
+/// Options for filtering and modifying the documentation output.
+///
+/// Controls which options to include and how to format them.
 #[derive(Args)]
 #[command(group(ArgGroup::new("filter")))]
 pub struct FilterOptions {
@@ -107,7 +118,7 @@ pub struct FilterOptions {
     /// Replace nix variables in the generated
     /// document with the specified value
     /// (can be used multiple times)
-    #[arg(long, value_parser = parse_key_value)]
+    #[arg(long, value_parser = utils::parse_key_value)]
     #[arg(value_name = "KEY=VALUE")]
     pub replace: Vec<(String, String)>,
 
@@ -119,7 +130,9 @@ pub struct FilterOptions {
     pub strip_prefix: Option<String>,
 }
 
-/// Utility Options
+/// Utility options for controlling the documentation process.
+///
+/// Controls progress display and file traversal behavior.
 #[derive(Args)]
 #[command(group(ArgGroup::new("utility")))]
 pub struct UtilityOptions {
@@ -136,42 +149,42 @@ pub struct UtilityOptions {
     pub progress: bool,
 }
 
+/// Represents a documented NixOS module option.
+///
+/// Contains all metadata about a single option including its name,
+/// type, description, default value, and source location.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OptionDoc {
+    /// The full name of the option with dot notation
     pub name: String,
+
+    /// The description text explaining the option's purpose and usage
     pub description: Option<String>,
-    pub nix_type: NixType,
+
+    /// The type of the option (bool, string, int, etc.)
+    pub nix_type: String,
+
+    /// The default value of the option, if any
     pub default_value: Option<String>,
+
+    /// An example value for the option, if provided
+    pub example: Option<String>,
+
+    /// The relative path to the file where the option is defined
     pub file_path: String,
+
+    /// The line number where the option is defined in the file
     pub line_number: usize,
 }
 
-// Parses a string for a given key and replaces with the specified value.
-// Used to interpolate variables in nix module definition as nix does not
-// replace interpolated variables until evaluated.
-//
-// # Arguments
-// - `string`: A string in the format key=value
-//
-// # Returns
-// A Result containing two strings as separate key and value
-fn parse_key_value(s: &str) -> Result<(String, String), String> {
-    let parts: Vec<&str> = s.splitn(2, '=').collect();
-    if parts.len() != 2 || parts[0].is_empty() {
-        return Err(format!("Invalid key=value format: {}", s));
-    }
-    Ok((parts[0].to_string(), parts[1].to_string()))
-}
-
 /// Filters the list of option documentation entries based on CLI parameters.
-/// Applies filters such as prefix, type, search term, and presence of a default value or description.
 ///
 /// # Arguments
-/// - `options`: A slice of option documentation entries.
-/// - `cli`: The CLI arguments containing filter criteria.
+/// - `options`: A slice of option documentation entries to filter.
+/// - `cli`: The CLI arguments containing filter criteria (prefix, type, search term, etc.).
 ///
 /// # Returns
-/// A vector of options that match the specified filters.
+/// A vector of options that match all specified filter conditions.
 pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
     let mut filtered = options.to_vec();
 
@@ -190,15 +203,23 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
 
     // Filter by search text
     if let Some(ref search) = cli.filter.search {
-        let search_lower = search.to_lowercase();
-        filtered.retain(|opt| {
-            opt.name.to_lowercase().contains(&search_lower)
-                || opt
-                    .description
-                    .as_ref()
-                    .map(|d| d.to_lowercase().contains(&search_lower))
-                    .unwrap_or(false)
-        });
+        // let search_lower = search.to_lowercase();
+        match regex::Regex::new(search) {
+            Ok(re) => {
+                filtered.retain(|opt| {
+                    re.is_match(&opt.name)
+                        || opt
+                            .description
+                            .as_ref()
+                            .map(|d| re.is_match(d))
+                            .unwrap_or(false)
+                });
+            }
+            Err(e) => {
+                // Log the error but don't filter out anything if the regex is invalid
+                log::error!("Invalid regex pattern '{}': {}", search, e);
+            }
+        }
     }
 
     // Filter by having default value
@@ -232,18 +253,30 @@ pub fn filter_options(options: &[OptionDoc], cli: &Cli) -> Vec<OptionDoc> {
         }
     }
 
+    if let Some(out_prefix) = &cli.io.out_prefix {
+        let prefix = if out_prefix.ends_with('/') {
+            out_prefix.strip_suffix('/').unwrap_or(out_prefix.as_str())
+        } else {
+            out_prefix.as_str()
+        };
+
+        for opt in &mut filtered {
+            opt.file_path = format!("{}/{}", prefix, opt.file_path);
+        }
+    }
+
     filtered
 }
 
 /// Prepares a local directory for processing Nix files.
-/// If the specified path exists locally, it is used directly; otherwise, if a Git URL is provided,
-/// the repository is cloned (using optional branch and depth settings) into a temporary directory.
 ///
 /// # Arguments
-/// - `cli`: The CLI arguments containing the path, branch, depth, etc.
+/// - `cli`: The CLI arguments containing path, branch, depth, and other repository options.
 ///
 /// # Returns
 /// A tuple containing the path to the working directory and an optional `TempDir` (for cleanup).
+/// If the path is local, returns the local path with None for TempDir.
+/// If the path is a git URL, clones the repository and returns the temp directory.
 pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError> {
     // Check if the path is a local directory
     let path = Path::new(&cli.io.path);
@@ -298,17 +331,17 @@ pub fn prepare_path(cli: &Cli) -> Result<(PathBuf, Option<TempDir>), NixDocError
     Ok((work_dir.to_path_buf(), Some(temp_dir)))
 }
 
-/// Recursively collects NixOS module options from all .nix files in the specified directory,
-/// excluding specified directories and applying variable replacements.
+/// Recursively collects NixOS module options from all .nix files in the specified directory.
 ///
 /// # Arguments
 /// - `dir`: The base directory to search for Nix files.
 /// - `exclude_dirs`: A list of directory paths to exclude from processing.
 /// - `replacements`: A map of variable replacements for dynamic parts in option definitions.
 /// - `show_progress`: Displays a progress bar if set to true.
+/// - `follow_symlinks`: Whether to follow symbolic links during directory traversal.
 ///
 /// # Returns
-/// A `Result` containing a vector of option documentation entries or an error.
+/// A `Result` containing a vector of unique option documentation entries or an error.
 pub fn collect_options(
     dir: &Path,
     exclude_dirs: &[String],
@@ -354,25 +387,8 @@ pub fn collect_options(
     // Collect all .nix files first
     let mut nix_files = Vec::new();
 
-    // Filter function to check if a path should be excluded
-    let is_excluded = |entry: &walkdir::DirEntry| {
-        if exclude_paths
-            .iter()
-            .any(|excl| entry.path().starts_with(excl))
-        {
-            log::debug!("Skipping excluded path: {}", entry.path().display());
-            true
-        } else {
-            false
-        }
-    };
-
     // Walk the directory, filtering out excluded paths
-    for result in WalkDir::new(dir)
-        .follow_links(follow_symlinks)
-        .into_iter()
-        .filter_entry(|e| !is_excluded(e))
-    {
+    for result in WalkDir::new(dir).follow_links(follow_symlinks).into_iter() {
         // Handle any errors during directory traversal
         let entry = match result {
             Ok(entry) => entry,
@@ -382,15 +398,9 @@ pub fn collect_options(
             }
         };
 
-        // Skip hidden files, non-files, and non-nix files
-        if is_hidden(&entry)
-            || !entry.file_type().is_file()
-            || entry.path().extension().is_none_or(|ext| ext != "nix")
-        {
-            continue;
+        if utils::should_process_file(&entry, &exclude_paths) {
+            nix_files.push(entry.path().to_path_buf());
         }
-
-        nix_files.push(entry.path().to_path_buf());
     }
 
     // Set up progress bar
@@ -433,42 +443,7 @@ pub fn collect_options(
                 }
             );
 
-            // Read file and parse options
-            match fs::read_to_string(file_path) {
-                Ok(content) => {
-                    let parse = rnix::Root::parse(&content);
-                    let relative_path = match file_path.strip_prefix(dir) {
-                        Ok(rel_path) => rel_path.to_string_lossy().into_owned(),
-                        Err(e) => {
-                            log::warn!(
-                                "Error getting relative path for {}: {}",
-                                file_path.display(),
-                                e
-                            );
-                            file_path.to_string_lossy().into_owned()
-                        }
-                    };
-
-                    // Parse the file and get options
-                    match parser::visit_node(
-                        &parse.syntax(),
-                        &relative_path,
-                        "",
-                        replacements,
-                        &content,
-                    ) {
-                        Ok(file_options) => file_options,
-                        Err(e) => {
-                            log::error!("Error parsing file {}: {}", file_path.display(), e);
-                            Vec::new()
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("Error reading file {}: {}", file_path.display(), e);
-                    Vec::new()
-                }
-            }
+            utils::process_nix_file(file_path, dir, replacements)
         })
         .collect();
 
@@ -492,21 +467,15 @@ pub fn collect_options(
     Ok(unique_options)
 }
 
-// Check if the directory is a hidden directory.
-fn is_hidden(entry: &walkdir::DirEntry) -> bool {
-    entry.file_name().to_string_lossy().starts_with('.')
-}
-
 /// Generates documentation for the given options in the specified output format.
-/// Optionally sorts the options alphabetically.
 ///
 /// # Arguments
-/// - `options`: A slice of option documentation entries.
+/// - `options`: A slice of option documentation entries to be formatted.
 /// - `format`: The desired output format (Markdown, JSON, HTML, or CSV).
-/// - `sorted`: If true, sorts the options by name.
+/// - `sorted`: If true, sorts the options alphabetically by name.
 ///
 /// # Returns
-/// A `Result` containing the generated documentation string or an error.
+/// A `Result` containing the generated documentation string in the specified format or an error.
 pub fn generate_doc(
     options: &[OptionDoc],
     format: OutputFormat,
