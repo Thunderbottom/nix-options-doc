@@ -54,7 +54,7 @@ pub fn generate_markdown(
 
         if let Some(example) = &option.example {
             if example.contains('\n') || example.len() > 72 {
-                writeln!(output, "\n**Example:**\n\n```nix\n{}```", example)?;
+                writeln!(output, "\n**Example:**\n\n```nix\n{}\n```", example)?;
             } else {
                 writeln!(output, "\n**Example:** `{}`", example)?;
             }
