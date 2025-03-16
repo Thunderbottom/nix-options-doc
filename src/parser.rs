@@ -148,12 +148,24 @@ fn parse_attrset(
         }
         // Child node, parse for mkOption or mkEnableOption
         SyntaxKind::NODE_APPLY => {
-            let fn_name = node
+            // Try to get the function name from SELECT node (lib.mkOption style)
+            let select_fn = node
                 .children()
                 .find(|n| n.kind() == SyntaxKind::NODE_SELECT)
                 .and_then(|n| n.children().last())
                 .map(|n| n.text().to_string());
 
+            // If not found via SELECT, try IDENT node (direct mkOption style)
+            let ident_fn = if select_fn.is_none() {
+                node.children()
+                    .find(|n| n.kind() == SyntaxKind::NODE_IDENT)
+                    .map(|n| n.text().to_string())
+            } else {
+                None
+            };
+
+            // Use whichever function name we found
+            let fn_name = select_fn.or(ident_fn);
             match fn_name.as_deref() {
                 Some("mkEnableOption") => {
                     let description = node
@@ -238,10 +250,22 @@ fn parse_attrset(
                         line_number: get_line_number(node, source_text),
                     });
                 }
-                _ => {}
+                _ => {
+                    log::debug!("Not a recognized option function: {:?}", fn_name);
+                }
             }
         }
-        _ => {}
+        // Handle `with <expr>;`
+        SyntaxKind::NODE_WITH => {
+            if let Some(body) = node.children().nth(1) {
+                let mut nested_options =
+                    visit_node(&body, file_path, current_prefix, replacements, source_text)?;
+                options.append(&mut nested_options);
+            }
+        }
+        _ => {
+            log::debug!("Unhandled node kind: {:?}", node.kind());
+        }
     }
 
     Ok(options)
