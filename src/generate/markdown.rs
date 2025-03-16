@@ -31,7 +31,7 @@ pub fn generate_markdown(
         // Type information - escaped
         if option.nix_type.contains('\n') || option.nix_type.len() > 72 {
             // Multi-line or long type - use code block
-            writeln!(output, "\n**Type:**\n\n```nix\n{}```", option.nix_type)?;
+            writeln!(output, "\n**Type:**\n\n```nix\n{}\n```", option.nix_type)?;
         } else {
             // Single line type - use inline code
             writeln!(
@@ -45,7 +45,7 @@ pub fn generate_markdown(
         if let Some(default) = &option.default_value {
             if default.contains('\n') || default.len() > 72 {
                 // Multi-line or long default - use code block
-                writeln!(output, "\n**Default:**\n\n```nix\n{}```", default)?;
+                writeln!(output, "\n**Default:**\n\n```nix\n{}\n```", default)?;
             } else {
                 // Single line default - use inline code
                 writeln!(output, "\n**Default:** `{}`", default)?;
