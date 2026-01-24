@@ -175,7 +175,7 @@ And in HTML with proper styling.
 
 ### Prerequisites
 
-- Rust 1.70 or later
+- Rust 1.85 or later
 - Git (for repository cloning features)
 
 ### Building and Testing
