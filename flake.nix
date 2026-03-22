@@ -45,6 +45,7 @@
             version = manifest.version;
             src = pkgs.lib.cleanSource ./.;
             cargoLock.lockFile = ./Cargo.lock;
+            env.NIX_CFLAGS_COMPILE = "-std=gnu17";
           };
       }
     );
