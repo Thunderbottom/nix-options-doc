@@ -38,7 +38,7 @@ fn test_basic_option_parsing() -> Result<(), Box<dyn std::error::Error + Send + 
     assert_eq!(options[0].nix_type.to_string(), "boolean");
     assert_eq!(
         options[0].description,
-        Some("Simple test option".to_string())
+        Some("Wether to enable Simple test option.".to_string())
     );
     assert_eq!(options[0].default_value, Some("false".to_string()));
 
